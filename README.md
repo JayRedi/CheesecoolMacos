@@ -1,6 +1,6 @@
 # CheeseCool for macOS
 
-CheeseCool 是一款面向 Apple Silicon Mac 的原生菜单栏客户端。当前包含产品核心、真实系统指标采样、原生菜单栏、SwiftUI 设置界面、原生 IOHID Protocol V1 传输层，以及仅演练的卸载器基础。
+CheeseCool 是一款面向 Apple Silicon Mac 的原生菜单栏客户端。当前包含产品核心、真实系统指标采样、原生菜单栏、SwiftUI 设置界面、原生 IOHID Protocol V1 传输层、原生拖拽安装 DMG，以及带严格清理边界的完整卸载器。
 
 ## 平台与安全边界
 
@@ -56,3 +56,8 @@ xcodebuild -project CheeseCool.xcodeproj -scheme 'CheeseCool Uninstaller' -confi
 - [配置](docs/CONFIGURATION.md)
 - [卸载契约](docs/UNINSTALL_CONTRACT.md)
 - [Phase 3 UI 与产品打磨](docs/PHASE3_UI_PRODUCT_POLISH.md)
+- [安装](docs/INSTALLATION.md)
+- [完整卸载](docs/UNINSTALLATION.md)
+- [本地打包](docs/PACKAGING.md)
+- [登录时启动](docs/LOGIN_ITEM.md)
+- [发布流程](docs/RELEASE_PROCESS.md)

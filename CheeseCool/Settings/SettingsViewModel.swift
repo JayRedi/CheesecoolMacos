@@ -16,6 +16,7 @@ public final class SettingsViewModel: ObservableObject {
     public var onConfigurationChanged: ((Configuration) -> Void)?
     public var onReset: (() -> Void)?
     public var onClearLogs: (() -> Void)?
+    public var onUninstall: (() -> Void)?
     private var isReplacingConfiguration = false
 
     public init(configuration: Configuration, simulationMode: Bool = false) {
@@ -25,6 +26,7 @@ public final class SettingsViewModel: ObservableObject {
 
     public func reset() { onReset?() }
     public func clearLogs() { onClearLogs?() }
+    public func uninstall() { onUninstall?() }
 
     public func replaceConfiguration(_ configuration: Configuration) {
         isReplacingConfiguration = true

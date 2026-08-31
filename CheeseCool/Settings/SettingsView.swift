@@ -15,6 +15,7 @@ public struct SettingsView: View {
     @ObservedObject private var model: SettingsViewModel
     @State private var selectedTab: SettingsTab
     @State private var resetConfirmationPresented = false
+    @State private var uninstallConfirmationPresented = false
 
     public init(model: SettingsViewModel) {
         self.model = model
@@ -41,6 +42,12 @@ public struct SettingsView: View {
             Button("取消", role: .cancel) {}
         } message: {
             Text("当前设置会立即替换并自动保存，无需重新启动 CheeseCool。")
+        }
+        .alert("完全卸载 CheeseCool？", isPresented: $uninstallConfirmationPresented) {
+            Button("取消", role: .cancel) {}
+            Button("完全卸载", role: .destructive) { model.uninstall() }
+        } message: {
+            Text("这会删除 CheeseCool 应用、用户设置、风扇配置、缓存、运行日志、诊断数据和登录自启动配置。此操作无法撤销。")
         }
     }
 
@@ -210,7 +217,7 @@ public struct SettingsView: View {
                 .frame(width: 88, height: 88)
                 .accessibilityHidden(true)
             Text("CheeseCool").font(.title2.weight(.semibold))
-            Text("版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0")")
+            Text("版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "未知版本")")
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 5) {
                 Text("Apple Silicon（arm64）")
@@ -219,6 +226,10 @@ public struct SettingsView: View {
             }
             .font(.callout)
             Link("GitHub 项目", destination: URL(string: "https://github.com/JayRedi/CheesecoolMacos")!)
+            Button("完全卸载 CheeseCool", role: .destructive) {
+                uninstallConfirmationPresented = true
+            }
+            .accessibilityLabel("完全卸载 CheeseCool")
             Text("开源项目。")
                 .font(.caption)
                 .foregroundStyle(.secondary)

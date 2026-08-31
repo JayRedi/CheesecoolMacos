@@ -13,6 +13,7 @@ public final class AppCoordinator {
     private let configStore: ConfigStore
     private let telemetryStore = TelemetryStore()
     private let loginItemManager: any LoginItemManaging
+    private let uninstallerLauncher: any UninstallerLaunching
     private var controlTask: Task<Void, Never>?
     private var settingsSaveTask: Task<Void, Never>?
     private var lastAppliedConfiguration: Configuration
@@ -24,7 +25,8 @@ public final class AppCoordinator {
 
     public init(
         loginItemManager: (any LoginItemManaging)? = nil,
-        simulationMode: Bool = false
+        simulationMode: Bool = false,
+        uninstallerLauncher: (any UninstallerLaunching)? = nil
     ) {
         let resolvedLoginItemManager = loginItemManager ?? SMAppServiceLoginItemManager()
         var configuration = Configuration.defaults
@@ -79,6 +81,7 @@ public final class AppCoordinator {
         self.settingsCoordinator = SettingsCoordinator(model: settingsViewModel)
         self.menuBarManager = MenuBarManager()
         self.loginItemManager = resolvedLoginItemManager
+        self.uninstallerLauncher = uninstallerLauncher ?? EmbeddedUninstallerLauncher()
         self.lastAppliedConfiguration = configuration
         wireSettingsActions()
         wireMenuBarActions()
@@ -178,6 +181,7 @@ public final class AppCoordinator {
             guard let self else { return }
             Task { await self.eventLog.clear() }
         }
+        settingsViewModel.onUninstall = { [weak self] in self?.beginCompleteUninstall() }
     }
 
     private func wireMenuBarActions() {
@@ -219,6 +223,12 @@ public final class AppCoordinator {
             guard let self else { return }
             let result = await configStore.load()
             var configuration = result.configuration
+            if result.usedDefaults, Self.isInstalledApplication, !loginItemManager.isEnabled {
+                do { try loginItemManager.setEnabled(true) }
+                catch {
+                    await eventLog.append(timestamp: clock.now, type: .configurationError, detail: "无法启用登录自启动：\(error.localizedDescription)")
+                }
+            }
             configuration.launchAtLogin = loginItemManager.isEnabled
             await apply(configuration)
             try? await configStore.save(configuration)
@@ -229,6 +239,20 @@ public final class AppCoordinator {
                     detail: error
                 )
             }
+        }
+    }
+
+    private static var isInstalledApplication: Bool {
+        Bundle.main.bundleURL.path.hasPrefix("/Applications/")
+    }
+
+    private func beginCompleteUninstall() {
+        do {
+            if loginItemManager.isEnabled { try loginItemManager.setEnabled(false) }
+            try uninstallerLauncher.launch(mainApplicationURL: Bundle.main.bundleURL)
+            NSApp.terminate(nil)
+        } catch {
+            Task { await eventLog.append(timestamp: clock.now, type: .configurationError, detail: "无法启动完整卸载：\(error.localizedDescription)") }
         }
     }
 
