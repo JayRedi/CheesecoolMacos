@@ -33,7 +33,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             loginItemManager = nil
         }
-        let coordinator = AppCoordinator(loginItemManager: loginItemManager)
+        let simulationMode = arguments.contains("--simulation") || dryRunDuration != nil
+        let coordinator = AppCoordinator(
+            loginItemManager: loginItemManager,
+            simulationMode: simulationMode
+        )
         self.coordinator = coordinator
         if let dryRunDuration {
             Task {

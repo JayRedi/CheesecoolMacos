@@ -182,11 +182,20 @@ public struct SettingsView: View {
                 diagnosticRow("CPU 负载", sample: model.metrics?.cpuLoad)
                 diagnosticRow("SoC 功耗", sample: model.metrics?.socPower)
                 diagnosticRow("GPU 负载", sample: model.metrics?.gpuLoad)
-#if DEBUG
-                LabeledContent("设备") { Text("模拟设备（FakeHostDevice）") }
-#else
-                LabeledContent("设备") { Text("未连接") }
-#endif
+                LabeledContent("设备") {
+                    Text(model.simulationMode ? "模拟设备（FakeHostDevice）" : deviceDiagnosticText)
+                }
+                if let diagnostics = model.hidDiagnostics, !model.simulationMode {
+                    LabeledContent("HID 匹配设备") { Text("\(diagnostics.matchingDevices.count) 个") }
+                    LabeledContent("HID 已选设备") { Text(diagnostics.selectedDevice?.displayName ?? "未连接") }
+                    LabeledContent("上次 HID 命令") { Text(diagnostics.lastCommand.map { String(format: "0x%02X", $0.rawValue) } ?? "--") }
+                    LabeledContent("HID 序列") { Text(diagnostics.lastSequence.map(String.init) ?? "--") }
+                    LabeledContent("HID 往返延迟") {
+                        Text(diagnostics.lastRoundTripMilliseconds.map { String(format: "%.1f ms", $0) } ?? "--")
+                    }
+                    LabeledContent("HID 传输") { Text(diagnostics.lastError ?? "正常") }
+                    LabeledContent("HID 断连/重连") { Text("\(diagnostics.disconnectCount) / \(diagnostics.reconnectCount)") }
+                }
                 Button("清除诊断日志") { model.clearLogs() }
             }
         }
@@ -228,11 +237,15 @@ public struct SettingsView: View {
                 LabeledContent("连接") { Text(telemetry.connectionState.displayName) }
                 LabeledContent("请求占空比") { Text(telemetry.requestedDuty.map { "\($0)%" } ?? "--") }
                 LabeledContent("风扇转速") { Text(telemetry.rpm.map { "\($0) RPM" } ?? "-- RPM") }
-#if DEBUG
-                Text("风扇转速与占空比来自模拟设备，仅用于开发验证。")
+                if model.simulationMode {
+                    Text("风扇转速与占空比来自模拟设备，仅用于开发验证。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-#endif
+                } else if telemetry.connectionState != .connected {
+                    Text("未检测到真实 CheeseCool 设备；风扇控制当前不可用。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Text("正在等待首次状态更新。")
                     .foregroundStyle(.secondary)
@@ -241,6 +254,11 @@ public struct SettingsView: View {
     }
 
     private let visibleConfigurableMetrics: Set<MetricIdentifier> = [.fanRPM, .fanDuty, .socTemperature, .cpuLoad]
+
+    private var deviceDiagnosticText: String {
+        guard let diagnostics = model.hidDiagnostics else { return "正在查找真实设备" }
+        return diagnostics.connected ? "已连接" : "设备未连接"
+    }
 
     @ViewBuilder
     private func metricToggle(_ metric: MetricIdentifier) -> some View {

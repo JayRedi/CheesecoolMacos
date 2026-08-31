@@ -11,13 +11,16 @@ public final class SettingsViewModel: ObservableObject {
     }
     @Published public private(set) var metrics: MetricsSnapshot?
     @Published public private(set) var telemetry: TelemetrySnapshot?
+    @Published public private(set) var hidDiagnostics: HIDDiagnosticsSnapshot?
+    public let simulationMode: Bool
     public var onConfigurationChanged: ((Configuration) -> Void)?
     public var onReset: (() -> Void)?
     public var onClearLogs: (() -> Void)?
     private var isReplacingConfiguration = false
 
-    public init(configuration: Configuration) {
+    public init(configuration: Configuration, simulationMode: Bool = false) {
         self.configuration = configuration
+        self.simulationMode = simulationMode
     }
 
     public func reset() { onReset?() }
@@ -39,6 +42,10 @@ public final class SettingsViewModel: ObservableObject {
 
     public func update(telemetry: TelemetrySnapshot) {
         self.telemetry = telemetry
+    }
+
+    public func update(hidDiagnostics: HIDDiagnosticsSnapshot) {
+        self.hidDiagnostics = hidDiagnostics
     }
 
     public func setMetric(_ metric: MetricIdentifier, visible: Bool) {

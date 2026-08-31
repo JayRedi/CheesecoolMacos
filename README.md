@@ -1,13 +1,14 @@
 # CheeseCool for macOS
 
-CheeseCool 是一款面向 Apple Silicon Mac 的原生菜单栏客户端。当前已建立产品核心、真实系统指标采样、确定性的模拟设备、原生菜单栏、SwiftUI 设置界面、应用图标，以及仅演练的卸载器基础。
+CheeseCool 是一款面向 Apple Silicon Mac 的原生菜单栏客户端。当前包含产品核心、真实系统指标采样、原生菜单栏、SwiftUI 设置界面、原生 IOHID Protocol V1 传输层，以及仅演练的卸载器基础。
 
 ## 平台与安全边界
 
 - 仅支持 Apple Silicon（`arm64`）；应用最低部署目标为 macOS 13.0。
 - 使用 Swift 6、AppKit 与 SwiftUI；不包含 Python 运行时、守护进程、特权辅助工具、LaunchAgent 或 Shell 环境修改。
 - `0%` 占空比表示 `MINIMUM_SPEED`（模拟设备中约为 345 RPM），绝不表示物理停转。
-- 硬件传输层和真实 Apple 传感器提供器暂缓实现。第一阶段不执行任何 USB、HID、DFU、刷写、OpenOCD、WCH-LinkE 或其他硬件操作。
+- 运行时仅被动匹配 CheeseCool 正常运行设备（VID `0x1A86` / PID `0xFE01`）；DFU PID `0x8035` 不会被发现、打开或写入。
+- Release 默认使用原生 HID 路径。模拟设备只可通过 `--simulation` 或既有的阶段演练参数启用，界面会明确标为“模拟设备”。本阶段没有对实际硬件执行验证、刷写、DFU、OpenOCD 或 WCH-LinkE 操作。
 
 ## 产品
 
@@ -31,7 +32,7 @@ xcodebuild -project CheeseCool.xcodeproj -scheme CheeseCool -configuration Debug
 xcodebuild -project CheeseCool.xcodeproj -scheme 'CheeseCool Uninstaller' -configuration Release -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/DerivedData CODE_SIGNING_ALLOWED=NO build
 ```
 
-`CheeseCool` 测试 scheme 会运行两个测试目标；其中核心测试套件包含确定性的 86,400 个时钟周期模拟。
+`CheeseCool` 测试 scheme 会运行两个测试目标；其中核心测试套件包含确定性的 86,400 个时钟周期模拟和 Protocol V1 的帧、校验、异常、热插拔模拟测试。
 
 ## 第一阶段审计环境
 
@@ -49,6 +50,9 @@ xcodebuild -project CheeseCool.xcodeproj -scheme 'CheeseCool Uninstaller' -confi
 - [macOS 客户端架构](docs/MACOS_CLIENT_ARCHITECTURE.md)
 - [Swift 产品核心契约](docs/SWIFT_PRODUCT_CORE_CONTRACT.md)
 - [菜单栏契约](docs/MENU_BAR_CONTRACT.md)
+- [HID 传输](docs/HID_TRANSPORT.md)
+- [Protocol V1 Swift 映射](docs/PROTOCOL_V1_SWIFT.md)
+- [设备连接与模拟模式](docs/DEVICE_CONNECTION.md)
 - [配置](docs/CONFIGURATION.md)
 - [卸载契约](docs/UNINSTALL_CONTRACT.md)
 - [Phase 3 UI 与产品打磨](docs/PHASE3_UI_PRODUCT_POLISH.md)

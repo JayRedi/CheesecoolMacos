@@ -16,12 +16,20 @@ AppCoordinator (@MainActor)
 └── ControlSession (actor)
     ├── TemperatureSource
     ├── AutoController（纯确定性值状态）
-    ├── HostDevice（异步协议）
+    ├── HostDevice（异步协议；生产环境为 HIDHostDevice）
     ├── MonotonicClock
     └── EventLog (actor, bounded)
 ```
 
-`AppCoordinator` 负责组合依赖；不使用产品核心单例或可变全局状态。与 UI 绑定的状态由主 actor 隔离。有状态的后台组件使用 actor，并在有意义时让跨边界模型遵循 `Sendable`。
+`AppCoordinator` 负责组合依赖；不使用产品核心单例或可变全局状态。默认组合 `HIDDeviceDiscovery`、`NativeHIDTransport` 与 `HIDHostDevice`；只有显式 `--simulation` 才组合 `FakeHostDevice`。与 UI 绑定的状态由主 actor 隔离。有状态的后台组件使用 actor，并在有意义时让跨边界模型遵循 `Sendable`。
+
+生产通信链路为：
+
+```text
+ControlSession → HostDevice → HIDHostDevice → HIDTransport → IOHID → CheeseCool Device
+```
+
+`HIDHostDevice` 不创建保活、轮询或重试循环。控制节奏、温度不可用时停止通信、重连退避和故障恢复仍完全由既有 `ControlSession` 所有，避免隐式重复流量。
 
 ## 源码布局
 
@@ -29,7 +37,7 @@ AppCoordinator (@MainActor)
 CheeseCool/
 ├── App/            应用入口与依赖组合
 ├── Core/           领域模型、AUTO 策略、会话、模拟、清单
-├── Device/         HostDevice 与确定性的 FakeHostDevice
+├── Device/         HostDevice、Protocol V1、IOHID 传输与显式 FakeHostDevice
 ├── Sensors/        提供器协议、SensorEngine、模拟提供器
 ├── MenuBar/        NSStatusItem 控制器与可见性不变量
 ├── Settings/       SwiftUI 模型/视图与 AppKit 窗口协调器

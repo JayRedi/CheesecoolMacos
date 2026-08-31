@@ -4,7 +4,8 @@ import CheeseCoolCore
 @MainActor
 public final class AppCoordinator {
     private let clock = SystemMonotonicClock()
-    private let device: FakeHostDevice
+    private let simulationDevice: FakeHostDevice?
+    private let hidDevice: HIDHostDevice?
     private let eventLog: EventLog
     private let controlSession: ControlSession
     private let lifecycleManager: LifecycleManager
@@ -21,22 +22,41 @@ public final class AppCoordinator {
     private let menuBarManager: MenuBarManager
     private var lifecycleRouter: LifecycleNotificationRouter?
 
-    public init(loginItemManager: (any LoginItemManaging)? = nil) {
+    public init(
+        loginItemManager: (any LoginItemManaging)? = nil,
+        simulationMode: Bool = false
+    ) {
         let resolvedLoginItemManager = loginItemManager ?? SMAppServiceLoginItemManager()
         var configuration = Configuration.defaults
         configuration.launchAtLogin = resolvedLoginItemManager.isEnabled
         let configurationURL = ConfigStore.productionURL()
         let temperatureProvider = AppleSiliconTemperatureProvider()
-        let device = FakeHostDevice(clock: clock)
+        let resolvedDevice: any HostDevice
+        let simulationDevice: FakeHostDevice?
+        let hidDevice: HIDHostDevice?
+        if simulationMode {
+            let fakeDevice = FakeHostDevice(clock: clock)
+            resolvedDevice = fakeDevice
+            simulationDevice = fakeDevice
+            hidDevice = nil
+        } else {
+            let discovery = HIDDeviceDiscovery()
+            let transport = NativeHIDTransport(discovery: discovery)
+            let nativeDevice = HIDHostDevice(discovery: discovery, transport: transport)
+            resolvedDevice = nativeDevice
+            simulationDevice = nil
+            hidDevice = nativeDevice
+        }
         let eventLog = EventLog(capacity: 128)
         let session = ControlSession(
             temperatureSource: temperatureProvider,
-            device: device,
+            device: resolvedDevice,
             configuration: configuration,
             clock: clock,
             eventLog: eventLog
         )
-        self.device = device
+        self.simulationDevice = simulationDevice
+        self.hidDevice = hidDevice
         self.eventLog = eventLog
         self.controlSession = session
         self.lifecycleManager = LifecycleManager(controlSession: session)
@@ -51,7 +71,10 @@ public final class AppCoordinator {
             fileURL: configurationURL,
             legacyFileURL: ConfigStore.legacyProductionURL()
         )
-        let settingsViewModel = SettingsViewModel(configuration: configuration)
+        let settingsViewModel = SettingsViewModel(
+            configuration: configuration,
+            simulationMode: simulationMode
+        )
         self.settingsViewModel = settingsViewModel
         self.settingsCoordinator = SettingsCoordinator(model: settingsViewModel)
         self.menuBarManager = MenuBarManager()
@@ -103,7 +126,12 @@ public final class AppCoordinator {
                 try? await Task.sleep(for: .seconds(delay))
             }
         }
-        let commandCount = await device.totalCommandCount
+        let commandCount: Int
+        if let simulationDevice {
+            commandCount = await simulationDevice.totalCommandCount
+        } else {
+            commandCount = 0
+        }
         await lifecycleManager.stop()
         return DryRunReport(
             startedAt: wallStart,
@@ -175,6 +203,9 @@ public final class AppCoordinator {
                 telemetryStore.publish(metrics: metrics)
                 settingsViewModel.update(metrics: metrics)
                 settingsViewModel.update(telemetry: telemetry)
+                if let hidDevice {
+                    settingsViewModel.update(hidDiagnostics: await hidDevice.diagnostics())
+                }
                 menuBarManager.update(telemetry: telemetry, metrics: metrics)
                 let interval = settingsViewModel.configuration.refreshInterval
                 let delay = max(0, interval - (clock.now - cycleStart))
