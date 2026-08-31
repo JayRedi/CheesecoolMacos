@@ -1,0 +1,16 @@
+{
+  "oracleCommit": "50beb2500937bd86aee1478bc1c295fc673b9efb",
+  "curve": [
+    { "temperatureCelsius": 40.0, "duty": 0.0 },
+    { "temperatureCelsius": 45.0, "duty": 12.5 },
+    { "temperatureCelsius": 50.0, "duty": 25.0 },
+    { "temperatureCelsius": 55.0, "duty": 32.5 },
+    { "temperatureCelsius": 60.0, "duty": 40.0 },
+    { "temperatureCelsius": 70.0, "duty": 60.0 },
+    { "temperatureCelsius": 80.0, "duty": 80.0 },
+    { "temperatureCelsius": 90.0, "duty": 100.0 }
+  ],
+  "minimumRPMAtZeroDuty": 345,
+  "watchdogSeconds": 30.0,
+  "failsafeDuty": 50
+}

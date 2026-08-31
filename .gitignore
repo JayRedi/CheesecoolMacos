@@ -1,0 +1,32 @@
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Build products
+build/
+.build/
+DerivedData/
+*.dSYM
+*.dSYM.zip
+*.xcarchive
+
+# Swift Package Manager (project-local generated state only)
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+
+# Signing and local credentials
+*.cer
+*.p12
+*.mobileprovision
+*.provisionprofile
+Signing.local.xcconfig
+
+# Distribution output
+dist/
+*.dmg
+
+# Temporary test/simulation data
+.test-data/
+*.tmp
+.DS_Store
