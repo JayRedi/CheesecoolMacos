@@ -1,10 +1,10 @@
-# macOS Client Architecture
+# macOS 客户端架构
 
-## Runtime shape
+## 运行时形态
 
-`CheeseCool.app` is an `LSUIElement` accessory application backed by a native `NSStatusItem`. It has no normal Dock icon. Opening Settings creates a conventional AppKit `NSWindow` hosting SwiftUI. There is no background daemon, privileged helper, Python interpreter, LaunchAgent, or persistent shell configuration.
+`CheeseCool.app` 是由原生 `NSStatusItem` 支撑的 `LSUIElement` 配件型应用，没有常规的 Dock 图标。打开“设置”会创建承载 SwiftUI 的传统 AppKit `NSWindow`。系统中没有后台守护进程、特权辅助工具、Python 解释器、LaunchAgent 或持久 Shell 配置。
 
-The product is divided into a UI/application target and a platform-neutral Swift framework:
+产品由 UI/应用目标和平台无关的 Swift 框架组成：
 
 ```text
 AppCoordinator (@MainActor)
@@ -15,45 +15,45 @@ AppCoordinator (@MainActor)
 ├── LifecycleManager (actor)
 └── ControlSession (actor)
     ├── TemperatureSource
-    ├── AutoController (pure deterministic value state)
-    ├── HostDevice (async protocol)
+    ├── AutoController（纯确定性值状态）
+    ├── HostDevice（异步协议）
     ├── MonotonicClock
     └── EventLog (actor, bounded)
 ```
 
-`AppCoordinator` composes dependencies; no product-core singleton or mutable global state is used. UI-bound state is main-actor isolated. Stateful background components use actors, and their cross-boundary models conform to `Sendable` where meaningful.
+`AppCoordinator` 负责组合依赖；不使用产品核心单例或可变全局状态。与 UI 绑定的状态由主 actor 隔离。有状态的后台组件使用 actor，并在有意义时让跨边界模型遵循 `Sendable`。
 
-## Source layout
+## 源码布局
 
 ```text
 CheeseCool/
-├── App/            application entry point and composition
-├── Core/           domain models, AUTO policy, session, simulation, manifests
-├── Device/         HostDevice and deterministic FakeHostDevice
-├── Sensors/        provider protocols, SensorEngine, fake providers
-├── MenuBar/        NSStatusItem controllers and visibility invariant
-├── Settings/       SwiftUI model/view and AppKit window coordinator
-├── Persistence/    ConfigStore and TelemetryStore
-├── Lifecycle/      sleep/wake/stop and login-item abstraction
-├── Diagnostics/    bounded structured EventLog
-└── Resources/      future native resources
+├── App/            应用入口与依赖组合
+├── Core/           领域模型、AUTO 策略、会话、模拟、清单
+├── Device/         HostDevice 与确定性的 FakeHostDevice
+├── Sensors/        提供器协议、SensorEngine、模拟提供器
+├── MenuBar/        NSStatusItem 控制器与可见性不变量
+├── Settings/       SwiftUI 模型/视图与 AppKit 窗口协调器
+├── Persistence/    ConfigStore 与 TelemetryStore
+├── Lifecycle/      睡眠/唤醒/停止与登录项抽象
+├── Diagnostics/    有界的结构化 EventLog
+└── Resources/      未来的原生资源
 ```
 
-## Clock and scheduling
+## 时钟与调度
 
-All control decisions use an injected monotonic clock. `SystemMonotonicClock` reads system uptime; `ManualClock` advances only when a test or simulation requests it. Keepalive age, fake MCU watchdog, temperature grace/staleness, reconnect backoff, event timestamps, and the long simulation all derive from that clock. No test sleeps to advance product state.
+所有控制决策均使用注入的单调时钟。`SystemMonotonicClock` 读取系统运行时间；`ManualClock` 仅在测试或模拟显式要求时推进。保活年龄、模拟 MCU 看门狗、温度宽限期/过期时间、重连退避、事件时间戳和长时间模拟均源于该时钟。测试不会通过休眠来推进产品状态。
 
-The application loop only schedules when to call `tick()`; it does not determine whether keepalive or recovery work is due.
+应用循环只负责安排何时调用 `tick()`；不会决定保活或恢复工作是否到期。
 
-## Lifecycle
+## 生命周期
 
-- `prepareForSleep()` disconnects and stops all host traffic so MCU ownership can take over.
-- `resumeFromSleep()` resets bounded reconnect state and marks the selected mode for synchronized restoration.
-- `stop()` closes the device and permanently transitions the session to `STOPPED`.
-- Normal quit cancels the app loop, awaits `stop()`, and then terminates.
+- `prepareForSleep()` 会断开连接并停止所有主机通信，以便 MCU 接管控制权。
+- `resumeFromSleep()` 会重置有界重连状态，并标记所选模式以同步恢复。
+- `stop()` 会关闭设备，并永久将会话迁移到 `STOPPED`。
+- 正常退出会取消应用循环、等待 `stop()` 完成，然后终止应用。
 
-Production sleep/wake notification wiring and real transport/sensor implementations are Phase 2 work.
+生产环境的睡眠/唤醒通知接线及真实传输/传感器实现属于第二阶段工作。
 
-## Login item
+## 登录项
 
-`LoginItemManaging` isolates login registration. `SMAppServiceLoginItemManager` is used only by the running application; tests use `FakeLoginItemManager` and never change developer-machine login items. No LaunchAgent plist or shell command is used.
+`LoginItemManaging` 隔离登录项注册。仅运行中的应用使用 `SMAppServiceLoginItemManager`；测试使用 `FakeLoginItemManager`，不会更改开发机登录项。不使用 LaunchAgent plist 或 Shell 命令。

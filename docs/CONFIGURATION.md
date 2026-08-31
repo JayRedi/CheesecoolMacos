@@ -1,22 +1,22 @@
-# Settings persistence
+# 设置持久化
 
-CheeseCool owns an internal UTF-8 settings store at:
+CheeseCool 在以下位置维护内部 UTF-8 设置存储：
 
 ```text
 ~/Library/Application Support/CheeseCool/settings.json
 ```
 
-This location is an implementation detail and is not exposed in menus or Settings. UI changes are validated, applied immediately, and atomically auto-saved after a short debounce. Tests inject temporary file URLs and never access the user's Library. Corrupt data falls back to complete safe defaults, retains a structured diagnostic, and can be reset from the product UI.
+该位置属于实现细节，不会在菜单或“设置”中暴露。界面更改会先验证、立即应用，并在短暂防抖后以原子方式自动保存。测试会注入临时文件 URL，绝不访问用户的 Library。损坏的数据会回退到完整的安全默认值，同时保留结构化诊断信息，并可从产品界面重置。
 
-One-time Phase 1 migration runs only when `settings.json` is absent and the former internal `config.json` exists. CheeseCool strictly decodes and validates the old data, atomically creates `settings.json`, preserves all valid values, and then reads only the new store. A corrupt legacy file produces and persists safe defaults so migration is not retried every launch; the old file is not deleted.
+仅当 `settings.json` 不存在、而旧的内部文件 `config.json` 存在时，才会执行一次第一阶段迁移。CheeseCool 会严格解码并验证旧数据，以原子方式创建 `settings.json`，保留所有有效值，之后只读取新存储。损坏的旧文件会生成并持久化安全默认值，避免每次启动都重试迁移；旧文件不会被删除。
 
-The launch-at-login field is persisted for continuity, but `SMAppService.mainApp.status` is authoritative in production. Loading settings updates the UI from the actual system state. Tests use `FakeLoginItemManager` and never modify the developer machine's login items.
+“登录时启动”字段会持久化以保持连续性，但在生产环境中以 `SMAppService.mainApp.status` 为准。加载设置时，界面会根据真实系统状态更新。测试使用 `FakeLoginItemManager`，不会修改开发机的登录项。
 
-Schema version 1 includes selected mode, manual duty, AUTO curve, deadband, ramp rates, critical behavior, temperature grace/staleness, keepalive/control intervals, reconnect policy, fixed physical-fan-off support, menu-bar visibility/order, refresh interval, login-at-startup, and previous-mode restoration.
+版本 1 的架构包含：所选模式、手动占空比、AUTO 曲线、控制回差、升降速率、临界行为、温度宽限期/过期时间、保活/控制间隔、重连策略、物理风扇停转支持、菜单栏可见性/排序、刷新间隔、登录时启动以及前一模式恢复。
 
-Decoding is strict. The root, reconnect policy, menu-bar object, and every curve point must have exactly the supported keys. Unknown/missing keys, unsupported schema versions/enums, non-finite values, invalid ranges/order, duplicate metrics, refresh intervals other than 1/2/5 seconds, and `physicalFanOffSupported=true` are rejected.
+解码采用严格模式。根对象、重连策略、菜单栏对象和每个曲线点都必须恰好包含受支持的键。未知或缺失的键、不支持的架构版本或枚举、非有限数值、无效范围或顺序、重复指标、非 1/2/5 秒的刷新间隔，以及 `physicalFanOffSupported=true` 都会被拒绝。
 
-Representative defaults:
+代表性默认值：
 
 ```json
 {

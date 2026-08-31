@@ -1,23 +1,23 @@
-# Swift Product Core Contract
+# Swift 产品核心契约
 
-## Behavioral oracle
+## 行为基准
 
-The frozen behavior was ported from the local Python Product Core at commit `50beb2500937bd86aee1478bc1c295fc673b9efb` on branch `product-core-simulation`. Relevant oracle sources were `tools/temperature_state`, `tools/auto_control`, `tools/cheesecool_core`, and `docs/HOST_PRODUCT_CORE.md`.
+冻结的行为由分支 `product-core-simulation` 上本地 Python Product Core 的提交 `50beb2500937bd86aee1478bc1c295fc673b9efb` 移植而来。相关基准源码为 `tools/temperature_state`、`tools/auto_control`、`tools/cheesecool_core` 和 `docs/HOST_PRODUCT_CORE.md`。
 
-Python is a development oracle only. `CheeseCool.app` and `CheeseCoolCore` neither execute nor embed Python. `PythonOracleV1.json` captures representative expected curve, zero-duty, watchdog, and failsafe outputs, and Swift tests compare against it.
+Python 仅作为开发行为基准。`CheeseCool.app` 与 `CheeseCoolCore` 既不执行也不内嵌 Python。`PythonOracleV1.json` 捕获代表性的曲线、零占空比、看门狗和失效保护输出，Swift 测试会与其比较。
 
-## Modes and device semantics
+## 模式与设备语义
 
-- `AUTO`: a normalized `TemperatureSample` flows through `AutoController` to an integer duty command.
-- `MANUAL`: exactly restores the configured integer duty from 0 through 100.
-- `MAX`: calls `HostDevice.setMax()`. It is not represented as ordinary `setDuty(100)`.
-- `0%`: `MINIMUM_SPEED`; `physicalFanOffSupported` is permanently `false` in schema v1.
+- `AUTO`：归一化的 `TemperatureSample` 经过 `AutoController`，产生整数占空比命令。
+- `MANUAL`：精确恢复配置的 0 至 100 整数占空比。
+- `MAX`：调用 `HostDevice.setMax()`，而非普通的 `setDuty(100)`。
+- `0%`：表示 `MINIMUM_SPEED`；在 schema v1 中 `physicalFanOffSupported` 永远为 `false`。
 
-`HostDevice` owns transport capabilities only: connect, disconnect, connection query, status read, host-controlled mode, MAX mode, exact duty, and close. It contains no AUTO curve, temperature policy, or UI behavior.
+`HostDevice` 仅拥有传输能力：连接、断开连接、连接查询、状态读取、主机控制模式、MAX 模式、精确占空比和关闭。它不包含 AUTO 曲线、温度策略或 UI 行为。
 
-## AUTO policy
+## AUTO 策略
 
-| Temperature | Raw duty |
+| 温度 | 原始占空比 |
 | --- | ---: |
 | ≤40°C | 0% |
 | 50°C | 25% |
@@ -26,36 +26,36 @@ Python is a development oracle only. `CheeseCool.app` and `CheeseCoolCore` neith
 | 80°C | 80% |
 | ≥90°C | 100% |
 
-Intermediate values are linearly interpolated. Deadband is 2 percentage points, ramp up is 20 points/second, and ramp down is 8 points/second. A `CRITICAL` sample bypasses deadband and ramp limits and requests 100% immediately. These values are the current behavioral baseline, not final physical tuning.
+中间值采用线性插值。控制回差为 2 个百分点，升速为每秒 20 个百分点，降速为每秒 8 个百分点。`CRITICAL` 样本会绕过控制回差和升降速限制，立即请求 100%。这些值是当前行为基线，而非最终物理调校。
 
-## Temperature loss
+## 温度丢失
 
-This contract applies only to AUTO:
+此契约仅适用于 AUTO：
 
-1. For up to and including 3 seconds after the last valid sample, state is `TEMPERATURE_GRACE` and the last requested duty is held.
-2. After 3 seconds, state is `TEMPERATURE_UNAVAILABLE` and the session performs no `HostDevice` call at all—not status, mode, duty, or keepalive.
-3. With traffic absent, the fake MCU's 30-second watchdog autonomously selects 50% failsafe.
-4. Recovery performs status read → host-controlled mode → recomputed current AUTO duty → verification status read.
+1. 最后一个有效样本后的 3 秒内（含 3 秒），状态为 `TEMPERATURE_GRACE`，并保持最后请求的占空比。
+2. 3 秒后，状态为 `TEMPERATURE_UNAVAILABLE`，会话完全不执行 `HostDevice` 调用——包括状态、模式、占空比和保活。
+3. 在没有通信流量的情况下，模拟 MCU 的 30 秒看门狗会自主选择 50% 的失效保护。
+4. 恢复流程为：读取状态 → 主机控制模式 → 重新计算当前 AUTO 占空比 → 验证状态读取。
 
-## Keepalive, failure, and restoration
+## 保活、失败与恢复
 
-An unchanged duty is not resent. If no other valid command occurred, an explicit `GET_STATUS` keepalive is due every 5 seconds.
+不会重复发送未改变的占空比。如果没有其他有效命令，每 5 秒应发送一次显式 `GET_STATUS` 保活。
 
-Transport failures enter `DEVICE_UNAVAILABLE`, disconnect once, and use bounded exponential reconnect. A reconnect performs connect → status read → selected-mode restoration → status verification. AUTO recalculates its current duty, MANUAL restores the user's exact duty, and MAX restores device MAX mode.
+传输失败会进入 `DEVICE_UNAVAILABLE`，仅断开一次，并使用有界指数重连。重连流程为：连接 → 读取状态 → 恢复所选模式 → 验证状态。AUTO 会重新计算当前占空比，MANUAL 恢复用户的精确占空比，MAX 恢复设备 MAX 模式。
 
-A reported failsafe is explicitly reconciled using the same status/mode/duty/verification flow. A power fault latches `POWER_FAULT` and blocks ordinary device traffic until explicit acknowledgement; if status still reports the fault during recovery, it latches again.
+报告的失效保护会使用同一套“状态/模式/占空比/验证”流程明确协调。电源故障会锁定为 `POWER_FAULT`，在显式确认前阻止常规设备通信；如果恢复期间状态仍报告故障，则再次锁定。
 
 ## FakeHostDevice
 
-The deterministic fake provides Protocol V1 product semantics without HID or IOKit:
+确定性的模拟设备在不使用 HID 或 IOKit 的情况下提供 Protocol V1 产品语义：
 
-- exact 0–100 duty and approximately 345–2500 RPM mapping;
-- HOST_CONTROLLED and dedicated MAX mode;
-- 30-second watchdog and 50% autonomous failsafe;
-- USB loss, connect/command/read failure, timeout, reboot, disconnect/reconnect, and power fault;
-- a configurable bounded command history (default 512);
-- virtual monotonic time.
+- 精确的 0–100 占空比，以及约 345–2500 RPM 映射；
+- HOST_CONTROLLED 与专用 MAX 模式；
+- 30 秒看门狗和 50% 自主失效保护；
+- USB 丢失、连接/命令/读取失败、超时、重启、断开/重连和电源故障；
+- 可配置的有界命令历史（默认 512 条）；
+- 虚拟单调时间。
 
-## Telemetry and diagnostics
+## 遥测与诊断
 
-`TelemetrySnapshot` preserves temperature/state/validity, selected mode, control state, raw AUTO duty, requested/last-sent/device duties, RPM, failsafe, power fault, connection, last command and age, last error, reason, and physical-fan-off support. `EventLog` defaults to 128 entries and discards oldest entries when full.
+`TelemetrySnapshot` 保存温度/状态/有效性、所选模式、控制状态、原始 AUTO 占空比、请求/最后发送/设备占空比、RPM、失效保护、电源故障、连接状态、最后命令及其年龄、最后错误、原因和物理风扇停转支持。`EventLog` 默认保留 128 条记录，满时丢弃最旧记录。

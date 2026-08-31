@@ -1,30 +1,30 @@
-# Phase 2 Apple Silicon system metrics
+# 第二阶段 Apple Silicon 系统指标
 
-## Sources and semantics
+## 数据来源与语义
 
-- SoC temperature uses the native IOKit HID event system. It accepts only product names matching `^(PMU|PMU2) tdie[0-9]+$`, rejects non-finite and out-of-range values, and selects the maximum valid 0–125°C reading. Battery, NAND, `tdev`, `tcal`, and unrelated device sensors are excluded. The IOKit event functions are exported by the system framework but are SPI rather than SDK-header API; they require no helper, root access, subprocess, daemon, or user-facing permission. Failure produces explicit unavailable/stale state rather than a numeric fallback.
-- CPU load uses Mach `HOST_CPU_LOAD_INFO` cumulative ticks. The first sample is unavailable. Later samples use deltas for `user + system + nice` as busy and `busy + idle` as total, producing a clamped overall percentage. Counter reset, zero delta, and API errors are unavailable samples.
-- Numeric package/SoC power is unsupported. The audited IOReport/powermetrics paths are private and/or privileged and are not acceptable for a permanent menu-bar utility. CheeseCool does not estimate power from CPU load or TDP.
-- GPU utilization is unsupported. The available Apple Silicon counters do not provide a stable public, non-privileged application API. CheeseCool does not derive GPU load from CPU activity.
+- SoC 温度使用原生 IOKit HID 事件系统。它只接受与 `^(PMU|PMU2) tdie[0-9]+$` 匹配的产品名称，拒绝非有限值和超出范围的值，并从有效的 0–125°C 读数中选择最大值。电池、NAND、`tdev`、`tcal` 和无关设备传感器均被排除。IOKit 事件函数由系统框架导出，但属于 SPI 而非 SDK 头文件 API；无需辅助工具、root 权限、子进程、守护进程或面向用户的权限。失败会产生明确的不可用/过期状态，而非数值回退。
+- CPU 负载使用 Mach `HOST_CPU_LOAD_INFO` 累积时钟周期。首个样本不可用。后续样本采用增量，将 `user + system + nice` 视为繁忙周期、将 `busy + idle` 视为总周期，得出经限幅的整体百分比。计数器重置、零增量和 API 错误均会产生不可用样本。
+- 数值化的封装/SoC 功耗不受支持。已审计的 IOReport/powermetrics 路径属于私有和/或需要特权，不适合常驻菜单栏工具。CheeseCool 不会依据 CPU 负载或 TDP 估算功耗。
+- GPU 利用率不受支持。可用的 Apple Silicon 计数器未提供稳定、公开且无需特权的应用 API。CheeseCool 不会从 CPU 活动推导 GPU 负载。
 
-Every `MetricSample` includes a value, validity flag, monotonic timestamp, source health, source description, optional reason, and measured provider latency. Temperature also records the contributing sensor count and names. `SensorEngine` starts all providers concurrently, off the UI path, and preserves healthy samples when another provider fails.
+每个 `MetricSample` 都包含数值、有效性标记、单调时间戳、数据源健康状态、数据源说明、可选原因和测得的提供器延迟。温度还会记录贡献传感器的数量与名称。`SensorEngine` 会在 UI 路径之外并发启动所有提供器，并在其他提供器失败时保留健康样本。
 
-## Sampling and display
+## 采样与显示
 
-The default period is 1 second, with product choices constrained to 1, 2, or 5 seconds. A single coordinator task drives control and metrics, and a short same-cycle temperature cache prevents duplicate HID enumeration when control and telemetry consume the shared temperature provider.
+默认周期为 1 秒，产品选项限制为 1、2 或 5 秒。单个协调器任务同时驱动控制和指标采样；当控制与遥测使用共享温度提供器时，短暂的同周期温度缓存可避免重复枚举 HID。
 
-Transient unavailable values use concise menu-bar placeholders. Permanently unsupported metrics are explained in Settings and do not occupy a status item. The main-icon accessibility invariant is evaluated after unsupported metrics are removed.
+暂时不可用的数值使用简洁的菜单栏占位符。永久不受支持的指标会在“设置”中解释，且不占用状态栏项目。主图标可访问性不变量会在移除不受支持指标后评估。
 
-## Development dry-run
+## 开发演练
 
-The Debug app supports a bounded Phase 2 dry-run:
+Debug 应用支持有界的第二阶段演练：
 
 ```text
 CheeseCool --phase2-dry-run-seconds=300 --disable-login-item-management
 ```
 
-The duration is clamped to at least 300 seconds. It samples at 1 Hz, controls only `FakeHostDevice`, writes all samples atomically to `/tmp/cheesecool-phase2-dry-run.json`, does not start normal settings/menu tasks, and exits. Each record includes temperature/state, AUTO raw and requested duty, fake duty/RPM, CPU, optional power/GPU, provider latency, and errors.
+时长会被限制为至少 300 秒。它以 1 Hz 采样，仅控制 `FakeHostDevice`，以原子方式将全部样本写入 `/tmp/cheesecool-phase2-dry-run.json`，不启动常规设置/菜单任务，然后退出。每条记录包含温度/状态、AUTO 原始与请求占空比、模拟占空比/RPM、CPU、可选功耗/GPU、提供器延迟和错误。
 
-## Permissions and runtime audit
+## 权限与运行时审计
 
-Required user-facing permissions: none. Screen Recording, Microphone, Camera, Accessibility, Full Disk Access, and Location are not requested. There is no privileged helper, persistent daemon, Python runtime, metric subprocess, new entitlement, or architecture other than arm64.
+所需的面向用户权限：无。不会请求屏幕录制、麦克风、摄像头、辅助功能、完全磁盘访问或定位权限。不存在特权辅助工具、持久守护进程、Python 运行时、指标子进程、新 entitlement 或 arm64 以外的架构。
