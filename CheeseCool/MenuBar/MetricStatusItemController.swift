@@ -1,6 +1,24 @@
 import AppKit
 import CheeseCoolCore
 
+enum MenuMetricFormatter {
+    static func title(for metric: MetricIdentifier, value: Double?) -> String {
+        switch (metric, value) {
+        case (.fanRPM, .some(let value)): return "\(Int(value.rounded())) RPM"
+        case (.fanRPM, .none): return "-- RPM"
+        case (.fanDuty, .some(let value)): return "\(Int(value.rounded()))%"
+        case (.fanDuty, .none): return "--%"
+        case (.socTemperature, .some(let value)): return String(format: "%.0f°C", value)
+        case (.socTemperature, .none): return "--°C"
+        case (.cpuLoad, .some(let value)), (.gpuLoad, .some(let value)):
+            return String(format: "%.0f%%", value)
+        case (.cpuLoad, .none), (.gpuLoad, .none): return "--%"
+        case (.socPower, .some(let value)): return String(format: "%.1f W", value)
+        case (.socPower, .none): return "-- W"
+        }
+    }
+}
+
 @MainActor
 final class MetricStatusItemController {
     let metric: MetricIdentifier
@@ -21,6 +39,7 @@ final class MetricStatusItemController {
         statusItem?.button?.title = title
         statusItem?.button?.toolTip = metric.displayName
         statusItem?.menu = menu
+        statusItem?.isVisible = true
     }
 
     func update(title: String) {
@@ -30,18 +49,5 @@ final class MetricStatusItemController {
     func hide() {
         if let statusItem { statusBar.removeStatusItem(statusItem) }
         statusItem = nil
-    }
-}
-
-extension MetricIdentifier {
-    var displayName: String {
-        switch self {
-        case .fanRPM: return "Fan RPM"
-        case .fanDuty: return "Fan Duty"
-        case .socTemperature: return "SoC Temperature"
-        case .cpuLoad: return "CPU Load"
-        case .socPower: return "SoC Power"
-        case .gpuLoad: return "GPU Load"
-        }
     }
 }

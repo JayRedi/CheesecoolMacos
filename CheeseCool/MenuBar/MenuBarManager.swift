@@ -1,18 +1,19 @@
 import AppKit
 import CheeseCoolCore
+import OSLog
 
 @MainActor
 public final class MenuBarManager: NSObject {
+    static let mainIconPointSize: CGFloat = 17
+    private let logger = Logger(subsystem: "org.cheesecool.CheeseCool", category: "MenuBar")
     private let statusBar: NSStatusBar
     private var mainStatusItem: NSStatusItem?
     private var metricControllers: [MetricIdentifier: MetricStatusItemController] = [:]
     private var preferences: MenuBarPreferences = .init()
+    private var unsupportedMetrics: Set<MetricIdentifier> = []
 
-    public var onModeSelected: ((OperatingMode) -> Void)?
     public var onSettings: (() -> Void)?
-    public var onReloadConfiguration: (() -> Void)?
     public var onQuit: (() -> Void)?
-    public var onPreferencesChanged: ((MenuBarPreferences) -> Void)?
 
     public override init() {
         self.statusBar = .system
@@ -26,30 +27,45 @@ public final class MenuBarManager: NSObject {
 
     public func apply(preferences: MenuBarPreferences) {
         self.preferences = preferences
+        rebuildForCurrentSupport()
+    }
+
+    private func rebuildForCurrentSupport() {
+        let effectiveMetrics = Set(preferences.visibleMetrics).subtracting(unsupportedMetrics)
         let visibility = MenuBarVisibilityPolicy.resolve(
             preferredMainIconVisible: preferences.mainIconPreferredVisible,
-            visibleMetrics: Set(preferences.visibleMetrics)
+            visibleMetrics: effectiveMetrics
         )
         rebuildMetricItems(visibility: visibility)
         setMainIconVisible(visibility.mainIconVisible)
+        logger.notice(
+            "Applied menu bar preferences: mainIconVisible=\(visibility.mainIconVisible, privacy: .public), visibleMetricCount=\(visibility.visibleMetrics.count, privacy: .public)"
+        )
     }
 
     public func update(telemetry: TelemetrySnapshot, metrics: MetricsSnapshot?) {
-        metricControllers[.fanRPM]?.update(title: telemetry.rpm.map { "\($0) RPM" } ?? "— RPM")
+        let latestUnsupported = MetricAvailabilityPolicy.unsupportedMetrics(in: metrics)
+        if latestUnsupported != unsupportedMetrics {
+            unsupportedMetrics = latestUnsupported
+            rebuildForCurrentSupport()
+        }
+        metricControllers[.fanRPM]?.update(
+            title: MenuMetricFormatter.title(for: .fanRPM, value: telemetry.rpm.map(Double.init))
+        )
         metricControllers[.fanDuty]?.update(
-            title: telemetry.deviceActualDuty.map { "\($0)%" } ?? "—%"
+            title: MenuMetricFormatter.title(for: .fanDuty, value: telemetry.deviceActualDuty.map(Double.init))
         )
         metricControllers[.socTemperature]?.update(
-            title: metrics?.socTemperatureCelsius.map { String(format: "%.0f°C", $0) } ?? "—°C"
+            title: MenuMetricFormatter.title(for: .socTemperature, value: metrics?.socTemperatureCelsius)
         )
         metricControllers[.cpuLoad]?.update(
-            title: metrics?.cpuLoadPercent.map { String(format: "CPU %.0f%%", $0) } ?? "CPU —%"
+            title: MenuMetricFormatter.title(for: .cpuLoad, value: metrics?.cpuLoadPercent)
         )
         metricControllers[.socPower]?.update(
-            title: metrics?.socPowerWatts.map { String(format: "%.1f W", $0) } ?? "— W"
+            title: MenuMetricFormatter.title(for: .socPower, value: metrics?.socPowerWatts)
         )
         metricControllers[.gpuLoad]?.update(
-            title: metrics?.gpuLoadPercent.map { String(format: "GPU %.0f%%", $0) } ?? "GPU —%"
+            title: MenuMetricFormatter.title(for: .gpuLoad, value: metrics?.gpuLoadPercent)
         )
     }
 
@@ -58,7 +74,7 @@ public final class MenuBarManager: NSObject {
         metricControllers.removeAll()
         for metric in preferences.metricOrder where visibility.visibleMetrics.contains(metric) {
             let controller = MetricStatusItemController(metric: metric, statusBar: statusBar)
-            controller.show(title: placeholder(for: metric), menu: makeMenu(for: metric))
+            controller.show(title: placeholder(for: metric), menu: makeMenu())
             metricControllers[metric] = controller
         }
     }
@@ -67,62 +83,39 @@ public final class MenuBarManager: NSObject {
         if visible, mainStatusItem == nil {
             let item = statusBar.statusItem(withLength: NSStatusItem.squareLength)
             if let image = NSImage(systemSymbolName: "fan.fill", accessibilityDescription: "CheeseCool") {
-                image.isTemplate = true
-                item.button?.image = image
+                let configuration = NSImage.SymbolConfiguration(
+                    pointSize: Self.mainIconPointSize,
+                    weight: .medium
+                )
+                let configuredImage = image.withSymbolConfiguration(configuration) ?? image
+                configuredImage.isTemplate = true
+                item.button?.image = configuredImage
+                item.button?.imagePosition = .imageOnly
+                item.button?.imageScaling = .scaleProportionallyDown
             } else {
                 item.button?.title = "C"
             }
             item.button?.toolTip = "CheeseCool"
-            item.menu = makeMenu(for: nil)
+            item.menu = makeMenu()
+            item.isVisible = true
             mainStatusItem = item
+            logger.notice(
+                "Created main status item: buttonAvailable=\(item.button != nil, privacy: .public), visible=\(item.isVisible, privacy: .public)"
+            )
         } else if !visible, let mainStatusItem {
             statusBar.removeStatusItem(mainStatusItem)
             self.mainStatusItem = nil
         } else if visible {
-            mainStatusItem?.menu = makeMenu(for: nil)
+            mainStatusItem?.menu = makeMenu()
         }
     }
 
-    private func makeMenu(for metric: MetricIdentifier?) -> NSMenu {
+    func makeMenu() -> NSMenu {
         let menu = NSMenu(title: "CheeseCool")
-        menu.addItem(modeItem(title: "AUTO", mode: .auto))
-        menu.addItem(modeItem(title: "MANUAL", mode: .manual))
-        menu.addItem(modeItem(title: "MAX", mode: .max))
+        menu.addItem(actionItem(title: "设置…", action: #selector(openSettings)))
         menu.addItem(.separator())
-        if let metric {
-            let item = NSMenuItem(
-                title: "Hide \(metric.displayName)",
-                action: #selector(toggleMetric(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = metric.rawValue
-            menu.addItem(item)
-        } else {
-            for availableMetric in preferences.metricOrder {
-                let visible = preferences.visibleMetrics.contains(availableMetric)
-                let item = NSMenuItem(
-                    title: "\(visible ? "Hide" : "Show") \(availableMetric.displayName)",
-                    action: #selector(toggleMetric(_:)),
-                    keyEquivalent: ""
-                )
-                item.target = self
-                item.representedObject = availableMetric.rawValue
-                menu.addItem(item)
-            }
-        }
-        menu.addItem(actionItem(title: "Settings…", action: #selector(openSettings)))
-        menu.addItem(actionItem(title: "Reload Configuration", action: #selector(reloadConfiguration)))
-        menu.addItem(.separator())
-        menu.addItem(actionItem(title: "Quit CheeseCool", action: #selector(quit)))
+        menu.addItem(actionItem(title: "退出 CheeseCool", action: #selector(quit)))
         return menu
-    }
-
-    private func modeItem(title: String, mode: OperatingMode) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: #selector(selectMode(_:)), keyEquivalent: "")
-        item.target = self
-        item.representedObject = mode.rawValue
-        return item
     }
 
     private func actionItem(title: String, action: Selector) -> NSMenuItem {
@@ -132,35 +125,9 @@ public final class MenuBarManager: NSObject {
     }
 
     private func placeholder(for metric: MetricIdentifier) -> String {
-        switch metric {
-        case .fanRPM: return "— RPM"
-        case .fanDuty: return "—%"
-        case .socTemperature: return "—°C"
-        case .cpuLoad: return "CPU —%"
-        case .socPower: return "— W"
-        case .gpuLoad: return "GPU —%"
-        }
-    }
-
-    @objc private func selectMode(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let mode = OperatingMode(rawValue: rawValue) else { return }
-        onModeSelected?(mode)
-    }
-
-    @objc private func toggleMetric(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let metric = MetricIdentifier(rawValue: rawValue) else { return }
-        if preferences.visibleMetrics.contains(metric) {
-            preferences.visibleMetrics.removeAll { $0 == metric }
-        } else {
-            preferences.visibleMetrics.append(metric)
-        }
-        apply(preferences: preferences)
-        onPreferencesChanged?(preferences)
+        MenuMetricFormatter.title(for: metric, value: nil)
     }
 
     @objc private func openSettings() { onSettings?() }
-    @objc private func reloadConfiguration() { onReloadConfiguration?() }
     @objc private func quit() { onQuit?() }
 }

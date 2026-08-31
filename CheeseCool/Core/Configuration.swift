@@ -176,7 +176,7 @@ public struct Configuration: Codable, Equatable, Sendable {
               temperatureStaleAfter > 0,
               keepaliveInterval > 0,
               controlTickInterval > 0,
-              refreshInterval > 0 else {
+              [1, 2, 5].contains(refreshInterval) else {
             throw ConfigurationError.invalidValue("control timing/rate")
         }
         guard reconnectPolicy.maxAttempts >= 0,

@@ -45,10 +45,83 @@ public enum TemperatureState: String, Codable, Sendable {
 public enum SensorSourceStatus: String, Codable, Sendable {
     case ok = "OK"
     case unavailable = "UNAVAILABLE"
+    case unsupported = "UNSUPPORTED"
     case empty = "EMPTY"
     case error = "ERROR"
     case timeout = "TIMEOUT"
     case stale = "STALE"
+}
+
+public struct MetricSample: Codable, Equatable, Sendable {
+    public let value: Double?
+    public let valid: Bool
+    public let timestamp: TimeInterval
+    public let sourceStatus: SensorSourceStatus
+    public let source: String
+    public let errorReason: String?
+    public let latencyMilliseconds: Double
+    public let sensorCount: Int
+    public let sensorsUsed: [String]
+
+    public init(
+        value: Double?,
+        valid: Bool,
+        timestamp: TimeInterval,
+        sourceStatus: SensorSourceStatus,
+        source: String,
+        errorReason: String? = nil,
+        latencyMilliseconds: Double = 0,
+        sensorCount: Int = 0,
+        sensorsUsed: [String] = []
+    ) {
+        self.value = value
+        self.valid = valid
+        self.timestamp = timestamp
+        self.sourceStatus = sourceStatus
+        self.source = source
+        self.errorReason = errorReason
+        self.latencyMilliseconds = latencyMilliseconds
+        self.sensorCount = sensorCount
+        self.sensorsUsed = sensorsUsed
+    }
+
+    public static func valid(
+        _ value: Double,
+        timestamp: TimeInterval,
+        source: String,
+        latencyMilliseconds: Double = 0,
+        sensorCount: Int = 0,
+        sensorsUsed: [String] = []
+    ) -> MetricSample {
+        MetricSample(
+            value: value,
+            valid: true,
+            timestamp: timestamp,
+            sourceStatus: .ok,
+            source: source,
+            latencyMilliseconds: latencyMilliseconds,
+            sensorCount: sensorCount,
+            sensorsUsed: sensorsUsed
+        )
+    }
+
+    public static func unavailable(
+        timestamp: TimeInterval,
+        source: String,
+        status: SensorSourceStatus = .unavailable,
+        reason: String,
+        latencyMilliseconds: Double = 0
+    ) -> MetricSample {
+        MetricSample(
+            value: nil,
+            valid: false,
+            timestamp: timestamp,
+            sourceStatus: status,
+            source: source,
+            errorReason: reason,
+            latencyMilliseconds: latencyMilliseconds
+        )
+    }
 }
 
 public struct TemperatureSample: Codable, Equatable, Sendable {
@@ -166,10 +239,35 @@ public enum MetricIdentifier: String, Codable, CaseIterable, Sendable {
 
 public struct MetricsSnapshot: Codable, Equatable, Sendable {
     public let timestamp: TimeInterval
-    public let socTemperatureCelsius: Double?
-    public let cpuLoadPercent: Double?
-    public let socPowerWatts: Double?
-    public let gpuLoadPercent: Double?
+    public let socTemperature: MetricSample
+    public let cpuLoad: MetricSample
+    public let socPower: MetricSample
+    public let gpuLoad: MetricSample
+    public let temperatureSensorCount: Int
+    public let temperatureSensorsUsed: [String]
+
+    public var socTemperatureCelsius: Double? { socTemperature.valid ? socTemperature.value : nil }
+    public var cpuLoadPercent: Double? { cpuLoad.valid ? cpuLoad.value : nil }
+    public var socPowerWatts: Double? { socPower.valid ? socPower.value : nil }
+    public var gpuLoadPercent: Double? { gpuLoad.valid ? gpuLoad.value : nil }
+
+    public init(
+        timestamp: TimeInterval,
+        socTemperature: MetricSample,
+        cpuLoad: MetricSample,
+        socPower: MetricSample,
+        gpuLoad: MetricSample,
+        temperatureSensorCount: Int = 0,
+        temperatureSensorsUsed: [String] = []
+    ) {
+        self.timestamp = timestamp
+        self.socTemperature = socTemperature
+        self.cpuLoad = cpuLoad
+        self.socPower = socPower
+        self.gpuLoad = gpuLoad
+        self.temperatureSensorCount = temperatureSensorCount
+        self.temperatureSensorsUsed = temperatureSensorsUsed
+    }
 
     public init(
         timestamp: TimeInterval,
@@ -178,11 +276,19 @@ public struct MetricsSnapshot: Codable, Equatable, Sendable {
         socPowerWatts: Double? = nil,
         gpuLoadPercent: Double? = nil
     ) {
-        self.timestamp = timestamp
-        self.socTemperatureCelsius = socTemperatureCelsius
-        self.cpuLoadPercent = cpuLoadPercent
-        self.socPowerWatts = socPowerWatts
-        self.gpuLoadPercent = gpuLoadPercent
+        func legacy(_ value: Double?, source: String) -> MetricSample {
+            guard let value else {
+                return .unavailable(timestamp: timestamp, source: source, reason: "No sample")
+            }
+            return .valid(value, timestamp: timestamp, source: source)
+        }
+        self.init(
+            timestamp: timestamp,
+            socTemperature: legacy(socTemperatureCelsius, source: "Legacy"),
+            cpuLoad: legacy(cpuLoadPercent, source: "Legacy"),
+            socPower: legacy(socPowerWatts, source: "Legacy"),
+            gpuLoad: legacy(gpuLoadPercent, source: "Legacy")
+        )
     }
 }
 

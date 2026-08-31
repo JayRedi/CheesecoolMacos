@@ -11,12 +11,17 @@ public final class SettingsCoordinator {
     }
 
     public func show() {
+        show(initialTab: .general)
+    }
+
+    func show(initialTab: SettingsTab) {
         if window == nil {
-            let hostingController = NSHostingController(rootView: SettingsView(model: model))
+            let rootView = SettingsView(model: model, initialTab: initialTab)
+            let hostingController = NSHostingController(rootView: rootView)
             let window = NSWindow(contentViewController: hostingController)
-            window.title = "CheeseCool Settings"
+            window.title = "CheeseCool 设置"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            window.setContentSize(NSSize(width: 680, height: 500))
+            window.setContentSize(NSSize(width: 720, height: 620))
             window.center()
             window.isReleasedWhenClosed = false
             self.window = window

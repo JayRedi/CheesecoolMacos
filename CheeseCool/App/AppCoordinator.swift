@@ -4,7 +4,6 @@ import CheeseCoolCore
 @MainActor
 public final class AppCoordinator {
     private let clock = SystemMonotonicClock()
-    private let sensorProvider: FakeSensorProvider
     private let device: FakeHostDevice
     private let eventLog: EventLog
     private let controlSession: ControlSession
@@ -14,58 +13,117 @@ public final class AppCoordinator {
     private let telemetryStore = TelemetryStore()
     private let loginItemManager: any LoginItemManaging
     private var controlTask: Task<Void, Never>?
+    private var settingsSaveTask: Task<Void, Never>?
+    private var lastAppliedConfiguration: Configuration
 
     private let settingsViewModel: SettingsViewModel
     private let settingsCoordinator: SettingsCoordinator
     private let menuBarManager: MenuBarManager
 
     public init(loginItemManager: (any LoginItemManaging)? = nil) {
-        let configuration = Configuration.defaults
+        let resolvedLoginItemManager = loginItemManager ?? SMAppServiceLoginItemManager()
+        var configuration = Configuration.defaults
+        configuration.launchAtLogin = resolvedLoginItemManager.isEnabled
         let configurationURL = ConfigStore.productionURL()
-        let sensorProvider = FakeSensorProvider()
+        let temperatureProvider = AppleSiliconTemperatureProvider()
         let device = FakeHostDevice(clock: clock)
         let eventLog = EventLog(capacity: 128)
         let session = ControlSession(
-            temperatureSource: sensorProvider,
+            temperatureSource: temperatureProvider,
             device: device,
             configuration: configuration,
             clock: clock,
             eventLog: eventLog
         )
-        self.sensorProvider = sensorProvider
         self.device = device
         self.eventLog = eventLog
         self.controlSession = session
         self.lifecycleManager = LifecycleManager(controlSession: session)
         self.sensorEngine = SensorEngine(
-            temperatureProvider: sensorProvider,
-            cpuProvider: sensorProvider,
-            powerProvider: sensorProvider,
-            gpuProvider: sensorProvider,
+            temperatureProvider: temperatureProvider,
+            cpuProvider: MachCPULoadProvider(),
+            powerProvider: UnsupportedSoCPowerProvider(),
+            gpuProvider: UnsupportedGPULoadProvider(),
             clock: clock
         )
-        self.configStore = ConfigStore(fileURL: configurationURL)
-        let settingsViewModel = SettingsViewModel(
-            configuration: configuration,
-            configurationURL: configurationURL
+        self.configStore = ConfigStore(
+            fileURL: configurationURL,
+            legacyFileURL: ConfigStore.legacyProductionURL()
         )
+        let settingsViewModel = SettingsViewModel(configuration: configuration)
         self.settingsViewModel = settingsViewModel
         self.settingsCoordinator = SettingsCoordinator(model: settingsViewModel)
         self.menuBarManager = MenuBarManager()
-        self.loginItemManager = loginItemManager ?? SMAppServiceLoginItemManager()
+        self.loginItemManager = resolvedLoginItemManager
+        self.lastAppliedConfiguration = configuration
         wireSettingsActions()
         wireMenuBarActions()
     }
 
     public func start() {
         menuBarManager.apply(preferences: settingsViewModel.configuration.menuBar)
-        reloadConfiguration()
+        loadConfiguration()
         startControlLoop()
     }
+
+    public func runDryRun(
+        duration: TimeInterval,
+        interval: TimeInterval = 1
+    ) async -> DryRunReport {
+        precondition(duration > 0 && interval > 0)
+        let wallStart = Date()
+        let start = clock.now
+        var nextSampleTime = start
+        var samples: [DryRunSample] = []
+        while clock.now - start < duration, !Task.isCancelled {
+            let metrics = await sensorEngine.poll()
+            let telemetry = await controlSession.tick()
+            samples.append(DryRunSample(
+                elapsedSeconds: clock.now - start,
+                temperatureCelsius: telemetry.socTemperatureCelsius,
+                temperatureState: telemetry.temperatureState,
+                temperatureValid: telemetry.temperatureValid,
+                rawAutoDuty: telemetry.rawAutoDuty,
+                requestedDuty: telemetry.requestedDuty,
+                fakeDeviceDuty: telemetry.deviceActualDuty,
+                fakeRPM: telemetry.rpm,
+                cpuLoadPercent: metrics.cpuLoadPercent,
+                socPowerWatts: metrics.socPowerWatts,
+                gpuLoadPercent: metrics.gpuLoadPercent,
+                temperatureLatencyMilliseconds: metrics.socTemperature.latencyMilliseconds,
+                cpuLatencyMilliseconds: metrics.cpuLoad.latencyMilliseconds,
+                error: telemetry.lastError
+            ))
+            nextSampleTime += interval
+            let remaining = duration - (clock.now - start)
+            let delay = min(remaining, nextSampleTime - clock.now)
+            if delay > 0 {
+                try? await Task.sleep(for: .seconds(delay))
+            }
+        }
+        let commandCount = await device.totalCommandCount
+        await lifecycleManager.stop()
+        return DryRunReport(
+            startedAt: wallStart,
+            requestedDurationSeconds: duration,
+            actualDurationSeconds: clock.now - start,
+            samplingIntervalSeconds: interval,
+            samples: samples,
+            commandCount: commandCount
+        )
+    }
+
+#if DEBUG
+    func showSettingsForUITesting() {
+        settingsCoordinator.show(initialTab: .fan)
+    }
+#endif
 
     public func stop() async {
         controlTask?.cancel()
         controlTask = nil
+        settingsSaveTask?.cancel()
+        settingsSaveTask = nil
         do {
             try settingsViewModel.configuration.validate()
             try await configStore.save(settingsViewModel.configuration)
@@ -80,10 +138,9 @@ public final class AppCoordinator {
     }
 
     private func wireSettingsActions() {
-        settingsViewModel.onSave = { [weak self] configuration in
-            self?.save(configuration)
+        settingsViewModel.onConfigurationChanged = { [weak self] configuration in
+            self?.configurationChanged(configuration)
         }
-        settingsViewModel.onReload = { [weak self] in self?.reloadConfiguration() }
         settingsViewModel.onReset = { [weak self] in self?.resetConfiguration() }
         settingsViewModel.onClearLogs = { [weak self] in
             guard let self else { return }
@@ -92,15 +149,7 @@ public final class AppCoordinator {
     }
 
     private func wireMenuBarActions() {
-        menuBarManager.onModeSelected = { [weak self] mode in
-            guard let self else { return }
-            Task { try? await self.controlSession.setMode(mode) }
-        }
         menuBarManager.onSettings = { [weak self] in self?.settingsCoordinator.show() }
-        menuBarManager.onReloadConfiguration = { [weak self] in self?.reloadConfiguration() }
-        menuBarManager.onPreferencesChanged = { [weak self] preferences in
-            self?.persistMenuPreferences(preferences)
-        }
         menuBarManager.onQuit = { NSApp.terminate(nil) }
     }
 
@@ -109,22 +158,28 @@ public final class AppCoordinator {
         controlTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
-                let telemetry = await controlSession.tick()
+                let cycleStart = clock.now
                 let metrics = await sensorEngine.poll()
+                let telemetry = await controlSession.tick()
                 telemetryStore.publish(telemetry)
                 telemetryStore.publish(metrics: metrics)
+                settingsViewModel.update(metrics: metrics)
                 menuBarManager.update(telemetry: telemetry, metrics: metrics)
-                let interval = max(0.1, settingsViewModel.configuration.controlTickInterval)
-                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                let interval = settingsViewModel.configuration.refreshInterval
+                let delay = max(0, interval - (clock.now - cycleStart))
+                try? await Task.sleep(for: .seconds(delay))
             }
         }
     }
 
-    private func reloadConfiguration() {
+    private func loadConfiguration() {
         Task { [weak self] in
             guard let self else { return }
-            let result = await configStore.reload()
-            await apply(result.configuration)
+            let result = await configStore.load()
+            var configuration = result.configuration
+            configuration.launchAtLogin = loginItemManager.isEnabled
+            await apply(configuration)
+            try? await configStore.save(configuration)
             if let error = result.error {
                 await eventLog.append(
                     timestamp: clock.now,
@@ -139,30 +194,9 @@ public final class AppCoordinator {
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await configStore.resetToDefaults()
-                await apply(.defaults)
-            } catch {
-                await eventLog.append(
-                    timestamp: clock.now,
-                    type: .configurationError,
-                    detail: error.localizedDescription
-                )
-            }
-        }
-    }
-
-    private func persistMenuPreferences(_ preferences: MenuBarPreferences) {
-        var configuration = settingsViewModel.configuration
-        configuration.menuBar = preferences
-        settingsViewModel.configuration = configuration
-        save(configuration)
-    }
-
-    private func save(_ configuration: Configuration) {
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try configuration.validate()
+                var configuration = Configuration.defaults
+                try loginItemManager.setEnabled(configuration.launchAtLogin)
+                configuration.launchAtLogin = loginItemManager.isEnabled
                 try await configStore.save(configuration)
                 await apply(configuration)
             } catch {
@@ -175,10 +209,45 @@ public final class AppCoordinator {
         }
     }
 
+    private func configurationChanged(_ configuration: Configuration) {
+        do {
+            try configuration.validate()
+            if configuration.launchAtLogin != loginItemManager.isEnabled {
+                try loginItemManager.setEnabled(configuration.launchAtLogin)
+            }
+        } catch {
+            var restored = lastAppliedConfiguration
+            restored.launchAtLogin = loginItemManager.isEnabled
+            settingsViewModel.replaceConfiguration(restored)
+            Task { await eventLog.append(
+                timestamp: clock.now,
+                type: .configurationError,
+                detail: error.localizedDescription
+            ) }
+            return
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            await apply(configuration)
+        }
+        settingsSaveTask?.cancel()
+        settingsSaveTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            do {
+                try await configStore.save(configuration)
+            } catch {
+                await eventLog.append(timestamp: clock.now, type: .configurationError, detail: error.localizedDescription)
+            }
+        }
+    }
+
     private func apply(_ configuration: Configuration) async {
-        settingsViewModel.configuration = configuration
+        settingsViewModel.replaceConfiguration(configuration)
         menuBarManager.apply(preferences: configuration.menuBar)
-        try? loginItemManager.setEnabled(configuration.launchAtLogin)
         try? await controlSession.applyConfiguration(configuration)
+        lastAppliedConfiguration = configuration
     }
 }

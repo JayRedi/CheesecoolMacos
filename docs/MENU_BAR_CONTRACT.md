@@ -22,4 +22,8 @@ else:
 
 Consequently, `main icon hidden + all metrics hidden` can never be applied. Hiding the final metric immediately materializes the main item. The invariant is implemented as a pure policy and covered by app unit tests.
 
-Every status item exposes a native context menu. The menu contains AUTO, MANUAL, MAX, Settings, Reload Configuration, and Quit. Metric items can hide themselves; the main item can show or hide each metric. Settings remains reachable from every visible CheeseCool entry.
+At Phase 2, a transiently unavailable supported metric remains visible with a concise placeholder (`--°C`, `--%`, or `-- W`). A permanently unsupported metric is removed from the menu bar and explained beside its disabled Settings toggle. Unsupported metrics do not count toward the accessibility invariant, so the main CheeseCool item appears if they were the only requested items.
+
+Real metric formatting is `42°C`, `18%`, and `6.8 W`. No custom font is applied. Fan RPM and duty continue to represent `FakeHostDevice`/not-connected development data until the later HID phase; they are not presented as real hardware telemetry.
+
+Every status item exposes the same minimal native context menu containing only Settings and Quit. Operating mode and metric visibility are configured in the Settings window. Settings remains reachable from every visible CheeseCool entry.

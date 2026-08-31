@@ -49,7 +49,7 @@ The `CheeseCool` scheme includes both `CheeseCoolCoreTests` and `CheeseCoolTests
 }
 ```
 
-The simulation used `ManualClock`; it did not wait for 24 real hours. It covered temperature variation and failure, AUTO/MANUAL/MAX transitions, disconnect/reconnect, MCU failsafe, power-fault recovery, sleep/wake, reboot, command failure, and configuration reload.
+The simulation used `ManualClock`; it did not wait for 24 real hours. It covered temperature variation and failure, AUTO/MANUAL/MAX transitions, disconnect/reconnect, MCU failsafe, power-fault recovery, sleep/wake, reboot, command failure, and configuration load/save behavior.
 
 ## Hardware and external effects
 

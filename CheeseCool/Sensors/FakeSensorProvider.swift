@@ -49,16 +49,27 @@ public actor FakeSensorProvider: TemperatureSource,
             temperature: temperature,
             timestamp: timestampOverride ?? now,
             now: now,
-            sourceStatus: status
+            sourceStatus: status,
+            sensorsUsed: ["Injected test sensor"]
         )
     }
 
-    public func readSoCTemperature() throws -> Double {
-        guard status == .ok, let temperature else { throw SensorError.unavailable }
-        return temperature
+    public func readSoCTemperature(now: TimeInterval) -> MetricSample {
+        guard status == .ok, let temperature else {
+            return .unavailable(timestamp: now, source: "Injected", status: status, reason: "Injected failure")
+        }
+        return .valid(temperature, timestamp: now, source: "Injected")
     }
 
-    public func readCPULoad() throws -> Double { cpuLoad }
-    public func readSoCPower() throws -> Double { socPower }
-    public func readGPULoad() throws -> Double { gpuLoad }
+    public func readCPULoad(now: TimeInterval) -> MetricSample {
+        .valid(cpuLoad, timestamp: now, source: "Injected")
+    }
+
+    public func readSoCPower(now: TimeInterval) -> MetricSample {
+        .valid(socPower, timestamp: now, source: "Injected")
+    }
+
+    public func readGPULoad(now: TimeInterval) -> MetricSample {
+        .valid(gpuLoad, timestamp: now, source: "Injected")
+    }
 }

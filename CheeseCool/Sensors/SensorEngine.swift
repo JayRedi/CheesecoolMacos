@@ -22,20 +22,19 @@ public actor SensorEngine {
     }
 
     public func poll() async -> MetricsSnapshot {
-        async let temperature = optional { try await temperatureProvider.readSoCTemperature() }
-        async let cpu = optional { try await cpuProvider.readCPULoad() }
-        async let power = optional { try await powerProvider.readSoCPower() }
-        async let gpu = optional { try await gpuProvider.readGPULoad() }
+        let timestamp = clock.now
+        async let temperature = temperatureProvider.readSoCTemperature(now: timestamp)
+        async let cpu = cpuProvider.readCPULoad(now: timestamp)
+        async let power = powerProvider.readSoCPower(now: timestamp)
+        async let gpu = gpuProvider.readGPULoad(now: timestamp)
         return await MetricsSnapshot(
-            timestamp: clock.now,
-            socTemperatureCelsius: temperature,
-            cpuLoadPercent: cpu,
-            socPowerWatts: power,
-            gpuLoadPercent: gpu
+            timestamp: timestamp,
+            socTemperature: temperature,
+            cpuLoad: cpu,
+            socPower: power,
+            gpuLoad: gpu,
+            temperatureSensorCount: temperature.sensorCount,
+            temperatureSensorsUsed: temperature.sensorsUsed
         )
-    }
-
-    private func optional(_ operation: @Sendable () async throws -> Double) async -> Double? {
-        try? await operation()
     }
 }

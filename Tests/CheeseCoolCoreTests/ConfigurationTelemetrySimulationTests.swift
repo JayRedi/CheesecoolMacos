@@ -72,11 +72,11 @@ final class ConfigurationTelemetrySimulationTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         try Data("{not-json".utf8).write(to: file)
         let store = ConfigStore(fileURL: file)
-        let fallback = await store.reload()
+        let fallback = await store.load()
         XCTAssertTrue(fallback.usedDefaults)
         XCTAssertNotNil(fallback.error)
         try await store.save(.defaults)
-        let loaded = await store.reload()
+        let loaded = await store.load()
         XCTAssertFalse(loaded.usedDefaults)
         XCTAssertNil(loaded.error)
         XCTAssertEqual(loaded.configuration, .defaults)

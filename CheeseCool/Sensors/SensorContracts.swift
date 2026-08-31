@@ -10,19 +10,33 @@ public protocol TemperatureSource: Sendable {
 }
 
 public protocol SoCTemperatureProviding: Sendable {
-    func readSoCTemperature() async throws -> Double
+    func readSoCTemperature(now: TimeInterval) async -> MetricSample
 }
 
 public protocol CPULoadProviding: Sendable {
-    func readCPULoad() async throws -> Double
+    func readCPULoad(now: TimeInterval) async -> MetricSample
 }
 
 public protocol PowerProviding: Sendable {
-    func readSoCPower() async throws -> Double
+    func readSoCPower(now: TimeInterval) async -> MetricSample
 }
 
 public protocol GPULoadProviding: Sendable {
-    func readGPULoad() async throws -> Double
+    func readGPULoad(now: TimeInterval) async -> MetricSample
+}
+
+public protocol TemperatureSensorReadingSource: Sendable {
+    func readSensors() async throws -> [RawTemperatureSensor]
+}
+
+public struct RawTemperatureSensor: Equatable, Sendable {
+    public let name: String
+    public let celsius: Double
+
+    public init(name: String, celsius: Double) {
+        self.name = name
+        self.celsius = celsius
+    }
 }
 
 public enum TemperatureClassifier {
@@ -39,7 +53,9 @@ public enum TemperatureClassifier {
         timestamp: TimeInterval,
         now: TimeInterval,
         sourceStatus: SensorSourceStatus = .ok,
-        staleAfter: TimeInterval = 5
+        staleAfter: TimeInterval = 5,
+        sensorCount: Int = 1,
+        sensorsUsed: [String] = []
     ) -> TemperatureSample {
         let age = max(0, now - timestamp)
         guard sourceStatus == .ok else {
@@ -59,8 +75,8 @@ public enum TemperatureClassifier {
             state: classify(temperature),
             valid: true,
             sourceStatus: .ok,
-            sensorCount: 1,
-            sensorsUsed: ["FAKE PMU tdie0"],
+            sensorCount: sensorCount,
+            sensorsUsed: sensorsUsed,
             sampleAgeMilliseconds: Int((age * 1_000).rounded())
         )
     }
