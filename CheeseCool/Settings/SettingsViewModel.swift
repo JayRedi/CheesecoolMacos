@@ -10,6 +10,7 @@ public final class SettingsViewModel: ObservableObject {
         }
     }
     @Published public private(set) var metrics: MetricsSnapshot?
+    @Published public private(set) var telemetry: TelemetrySnapshot?
     public var onConfigurationChanged: ((Configuration) -> Void)?
     public var onReset: (() -> Void)?
     public var onClearLogs: (() -> Void)?
@@ -34,6 +35,44 @@ public final class SettingsViewModel: ObservableObject {
         if configuration.menuBar.visibleMetrics.contains(where: unsupported.contains) {
             configuration.menuBar.visibleMetrics.removeAll { unsupported.contains($0) }
         }
+    }
+
+    public func update(telemetry: TelemetrySnapshot) {
+        self.telemetry = telemetry
+    }
+
+    public func setMetric(_ metric: MetricIdentifier, visible: Bool) {
+        configuration.menuBar.visibleMetrics.removeAll { $0 == metric }
+        if visible { configuration.menuBar.visibleMetrics.append(metric) }
+    }
+
+    public func moveMetric(_ metric: MetricIdentifier, by offset: Int) {
+        guard let index = configuration.menuBar.metricOrder.firstIndex(of: metric) else { return }
+        let target = index + offset
+        guard configuration.menuBar.metricOrder.indices.contains(target) else { return }
+        configuration.menuBar.metricOrder.swapAt(index, target)
+    }
+
+    public func setManualDuty(_ duty: Int) {
+        configuration.manualDuty = min(100, max(0, duty))
+    }
+
+    public func setAutoCurvePoint(at index: Int, temperature: Double? = nil, duty: Double? = nil) {
+        guard configuration.autoCurve.indices.contains(index) else { return }
+        let current = configuration.autoCurve[index]
+        let lowerBound = index == 0 ? -100 : configuration.autoCurve[index - 1].temperatureCelsius + 1
+        let upperBound = index == configuration.autoCurve.count - 1
+            ? 200
+            : configuration.autoCurve[index + 1].temperatureCelsius - 1
+        let proposedTemperature = min(upperBound, max(lowerBound, (temperature ?? current.temperatureCelsius).rounded()))
+        let proposedDuty = min(100, max(0, (duty ?? current.duty).rounded()))
+        var candidate = configuration
+        candidate.autoCurve[index] = AutoCurvePoint(
+            temperatureCelsius: proposedTemperature,
+            duty: proposedDuty
+        )
+        guard (try? candidate.validate()) != nil else { return }
+        configuration = candidate
     }
 
     public func sample(for metric: MetricIdentifier) -> MetricSample? {

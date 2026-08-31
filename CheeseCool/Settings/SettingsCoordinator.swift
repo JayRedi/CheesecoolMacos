@@ -6,6 +6,8 @@ public final class SettingsCoordinator {
     private let model: SettingsViewModel
     private var window: NSWindow?
 
+    var windowInstanceCount: Int { window == nil ? 0 : 1 }
+
     public init(model: SettingsViewModel) {
         self.model = model
     }

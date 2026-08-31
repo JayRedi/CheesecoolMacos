@@ -38,6 +38,7 @@ final class MetricStatusItemController {
         }
         statusItem?.button?.title = title
         statusItem?.button?.toolTip = metric.displayName
+        statusItem?.button?.setAccessibilityLabel(metric.displayName)
         statusItem?.menu = menu
         statusItem?.isVisible = true
     }

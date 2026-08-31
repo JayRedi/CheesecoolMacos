@@ -20,13 +20,13 @@ final class UserFacingTextTests: XCTestCase {
         XCTAssertEqual(MetricIdentifier.gpuLoad.displayName, "图形处理器负载")
     }
 
-    func testMainMenuContainsOnlySettingsAndQuit() {
+    func testMainMenuShowsStatusModesSettingsAndQuit() {
         let titles = MenuBarManager().makeMenu().items.map(\.title)
 
-        XCTAssertEqual(
-            titles,
-            ["设置…", "", "退出 CheeseCool"]
-        )
+        XCTAssertEqual(titles, [
+            "当前状态：正在准备", "自动（AUTO）", "手动（MANUAL）", "全速（MAX）",
+            "", "设置…", "", "退出 CheeseCool"
+        ])
     }
 
     func testMainIconUsesNativeMenuBarScale() {

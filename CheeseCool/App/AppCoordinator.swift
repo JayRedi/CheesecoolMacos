@@ -19,6 +19,7 @@ public final class AppCoordinator {
     private let settingsViewModel: SettingsViewModel
     private let settingsCoordinator: SettingsCoordinator
     private let menuBarManager: MenuBarManager
+    private var lifecycleRouter: LifecycleNotificationRouter?
 
     public init(loginItemManager: (any LoginItemManaging)? = nil) {
         let resolvedLoginItemManager = loginItemManager ?? SMAppServiceLoginItemManager()
@@ -63,6 +64,7 @@ public final class AppCoordinator {
     public func start() {
         menuBarManager.apply(preferences: settingsViewModel.configuration.menuBar)
         loadConfiguration()
+        startLifecycleNotifications()
         startControlLoop()
     }
 
@@ -124,6 +126,8 @@ public final class AppCoordinator {
         controlTask = nil
         settingsSaveTask?.cancel()
         settingsSaveTask = nil
+        lifecycleRouter?.stop()
+        lifecycleRouter = nil
         do {
             try settingsViewModel.configuration.validate()
             try await configStore.save(settingsViewModel.configuration)
@@ -151,6 +155,12 @@ public final class AppCoordinator {
     private func wireMenuBarActions() {
         menuBarManager.onSettings = { [weak self] in self?.settingsCoordinator.show() }
         menuBarManager.onQuit = { NSApp.terminate(nil) }
+        menuBarManager.onModeSelected = { [weak self] mode in
+            self?.settingsViewModel.configuration.operatingMode = mode
+        }
+        menuBarManager.onMetricVisibilityChanged = { [weak self] metric, visible in
+            self?.settingsViewModel.setMetric(metric, visible: visible)
+        }
     }
 
     private func startControlLoop() {
@@ -164,6 +174,7 @@ public final class AppCoordinator {
                 telemetryStore.publish(telemetry)
                 telemetryStore.publish(metrics: metrics)
                 settingsViewModel.update(metrics: metrics)
+                settingsViewModel.update(telemetry: telemetry)
                 menuBarManager.update(telemetry: telemetry, metrics: metrics)
                 let interval = settingsViewModel.configuration.refreshInterval
                 let delay = max(0, interval - (clock.now - cycleStart))
@@ -248,6 +259,25 @@ public final class AppCoordinator {
         settingsViewModel.replaceConfiguration(configuration)
         menuBarManager.apply(preferences: configuration.menuBar)
         try? await controlSession.applyConfiguration(configuration)
+        try? await controlSession.setMode(configuration.operatingMode, manualDuty: configuration.manualDuty)
         lastAppliedConfiguration = configuration
+    }
+
+    private func startLifecycleNotifications() {
+        let notificationCenter = NSWorkspace.shared.notificationCenter
+        lifecycleRouter = LifecycleNotificationRouter(
+            notificationCenter: notificationCenter,
+            sleepNotification: NSWorkspace.willSleepNotification,
+            wakeNotification: NSWorkspace.didWakeNotification,
+            onSleep: { [weak self] in
+                guard let self else { return }
+                Task { await self.lifecycleManager.prepareForSleep() }
+            },
+            onWake: { [weak self] in
+                guard let self else { return }
+                Task { await self.lifecycleManager.resumeFromSleep() }
+            }
+        )
+        lifecycleRouter?.start()
     }
 }

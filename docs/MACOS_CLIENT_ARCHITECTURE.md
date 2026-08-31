@@ -52,7 +52,9 @@ CheeseCool/
 - `stop()` 会关闭设备，并永久将会话迁移到 `STOPPED`。
 - 正常退出会取消应用循环、等待 `stop()` 完成，然后终止应用。
 
-生产环境的睡眠/唤醒通知接线及真实传输/传感器实现属于第二阶段工作。
+应用通过 `NSWorkspace.willSleepNotification` 和 `NSWorkspace.didWakeNotification` 接入生产环境睡眠/唤醒通知，分别调用 `LifecycleManager.prepareForSleep()` 和 `LifecycleManager.resumeFromSleep()`。不使用守护进程或辅助工具；唤醒后的恢复仍遵循既有有界重连与同步规则。
+
+`SettingsCoordinator` 缓存唯一的设置窗口。反复打开“设置”只会激活同一窗口；关闭窗口不会退出 CheeseCool。普通应用保持菜单栏模式且不常驻 Dock 图标。
 
 ## 登录项
 
