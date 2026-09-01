@@ -37,6 +37,36 @@ final class ControlSessionTests: XCTestCase {
         XCTAssertTrue(hasKeepalive)
     }
 
+    func testStatusPollingUsesConfiguredRefreshInterval() async throws {
+        let configuration = try Configuration(keepaliveInterval: 5, refreshInterval: 1)
+        let (clock, _, device, _, session) = makeSession(configuration: configuration)
+        _ = await session.tick()
+        let readsBefore = await device.readCount
+
+        try clock.advance(by: 1)
+        _ = await session.tick()
+
+        let readsAfter = await device.readCount
+        XCTAssertEqual(readsAfter, readsBefore + 1)
+    }
+
+    func testDedicatedStatusRefreshDoesNotNeedTemperatureSampling() async throws {
+        let configuration = try Configuration(keepaliveInterval: 5, refreshInterval: 1)
+        let (clock, source, device, _, session) = makeSession(configuration: configuration)
+        try await session.setMode(.manual, manualDuty: 20)
+        _ = await session.tick()
+        await source.setUnavailable()
+        let readsBefore = await device.readCount
+
+        try clock.advance(by: 1)
+        let telemetry = await session.refreshStatus()
+
+        let readsAfter = await device.readCount
+        XCTAssertEqual(readsAfter, readsBefore + 1)
+        XCTAssertEqual(telemetry.rpm, 776)
+        XCTAssertEqual(telemetry.connectionState, .connected)
+    }
+
     func testManualZeroFiftyAndHundred() async throws {
         let (_, _, device, _, session) = makeSession()
         for duty in [0, 50, 100] {

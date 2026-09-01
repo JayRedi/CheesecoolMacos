@@ -108,7 +108,7 @@ public actor ControlSession {
                 controlState = .maxActive
             }
 
-            if keepaliveDue(at: now) {
+            if statusRefreshDue(at: now) {
                 let status = try await getStatus()
                 if status.powerFault {
                     await enterPowerFault(status)
@@ -197,6 +197,31 @@ public actor ControlSession {
 
     public func telemetry() -> TelemetrySnapshot {
         telemetry(at: clock.now)
+    }
+
+    /// Reads fresh device telemetry without waiting for temperature sampling or
+    /// changing the requested control mode. This keeps the UI's fan RPM cadence
+    /// independent from a slow system-sensor read.
+    @discardableResult
+    public func refreshStatus() async -> TelemetrySnapshot {
+        let now = clock.now
+        guard !stopped, !sleeping,
+              connectionState == .connected,
+              await device.isConnected,
+              statusRefreshDue(at: now) else {
+            return telemetry(at: now)
+        }
+        do {
+            let status = try await getStatus()
+            if status.powerFault {
+                await enterPowerFault(status)
+            } else if status.failsafe {
+                needsRestore = true
+            }
+        } catch {
+            await deviceFailure(error)
+        }
+        return telemetry(at: clock.now)
     }
 
     private func desiredDecision(at now: TimeInterval) async -> ControlDecision? {
@@ -414,9 +439,13 @@ public actor ControlSession {
         lastCommandTime = clock.now
     }
 
-    private func keepaliveDue(at now: TimeInterval) -> Bool {
+    /// Status drives the displayed fan RPM, so it follows the user-facing refresh
+    /// interval. The keepalive ceiling remains a safety bound when the UI is set
+    /// to a slower interval.
+    private func statusRefreshDue(at now: TimeInterval) -> Bool {
         guard let lastCommandTime else { return true }
-        return now - lastCommandTime >= configuration.keepaliveInterval
+        let interval = min(configuration.refreshInterval, configuration.keepaliveInterval)
+        return now - lastCommandTime >= interval
     }
 
     private func activeState(for mode: OperatingMode) -> ControlState {

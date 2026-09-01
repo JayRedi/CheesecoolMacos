@@ -104,7 +104,8 @@ public enum DeterministicSimulation {
         let attempts = await device.connectAttempts
         let finalControl = await session.currentControlState
         let finalConnection = await session.currentConnectionState
-        let commandFlood = totalCommands > duration / Int(configuration.keepaliveInterval) + 500
+        let statusInterval = min(configuration.refreshInterval, configuration.keepaliveInterval)
+        let commandFlood = totalCommands > duration / Int(statusInterval) + 500
         let endlessReconnect = attempts >= 30
         let deadlock = [.deviceUnavailable, .powerFault, .stopped].contains(finalControl)
             || finalConnection != .connected

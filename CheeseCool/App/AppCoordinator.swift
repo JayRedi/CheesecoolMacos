@@ -15,8 +15,12 @@ public final class AppCoordinator {
     private let loginItemManager: any LoginItemManaging
     private let uninstallerLauncher: any UninstallerLaunching
     private var controlTask: Task<Void, Never>?
+    private var statusTask: Task<Void, Never>?
+    private var metricsTask: Task<Void, Never>?
     private var settingsSaveTask: Task<Void, Never>?
     private var lastAppliedConfiguration: Configuration
+    private var latestTelemetry: TelemetrySnapshot?
+    private var latestMetrics: MetricsSnapshot?
 
     private let settingsViewModel: SettingsViewModel
     private let settingsCoordinator: SettingsCoordinator
@@ -155,6 +159,10 @@ public final class AppCoordinator {
     public func stop() async {
         controlTask?.cancel()
         controlTask = nil
+        statusTask?.cancel()
+        statusTask = nil
+        metricsTask?.cancel()
+        metricsTask = nil
         settingsSaveTask?.cancel()
         settingsSaveTask = nil
         lifecycleRouter?.stop()
@@ -197,20 +205,53 @@ public final class AppCoordinator {
 
     private func startControlLoop() {
         controlTask?.cancel()
+        statusTask?.cancel()
+        metricsTask?.cancel()
         controlTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
                 let cycleStart = clock.now
-                let metrics = await sensorEngine.poll()
                 let telemetry = await controlSession.tick()
                 telemetryStore.publish(telemetry)
-                telemetryStore.publish(metrics: metrics)
-                settingsViewModel.update(metrics: metrics)
                 settingsViewModel.update(telemetry: telemetry)
                 if let hidDevice {
                     settingsViewModel.update(hidDiagnostics: await hidDevice.diagnostics())
                 }
-                menuBarManager.update(telemetry: telemetry, metrics: metrics)
+                latestTelemetry = telemetry
+                menuBarManager.update(telemetry: telemetry, metrics: latestMetrics)
+                let interval = settingsViewModel.configuration.refreshInterval
+                let delay = max(0, interval - (clock.now - cycleStart))
+                try? await Task.sleep(for: .seconds(delay))
+            }
+        }
+        statusTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                let cycleStart = clock.now
+                let telemetry = await controlSession.refreshStatus()
+                telemetryStore.publish(telemetry)
+                settingsViewModel.update(telemetry: telemetry)
+                if let hidDevice {
+                    settingsViewModel.update(hidDiagnostics: await hidDevice.diagnostics())
+                }
+                latestTelemetry = telemetry
+                menuBarManager.update(telemetry: telemetry, metrics: latestMetrics)
+                let interval = settingsViewModel.configuration.refreshInterval
+                let delay = max(0, interval - (clock.now - cycleStart))
+                try? await Task.sleep(for: .seconds(delay))
+            }
+        }
+        metricsTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                let cycleStart = clock.now
+                let metrics = await sensorEngine.poll()
+                telemetryStore.publish(metrics: metrics)
+                settingsViewModel.update(metrics: metrics)
+                latestMetrics = metrics
+                if let latestTelemetry {
+                    menuBarManager.update(telemetry: latestTelemetry, metrics: metrics)
+                }
                 let interval = settingsViewModel.configuration.refreshInterval
                 let delay = max(0, interval - (clock.now - cycleStart))
                 try? await Task.sleep(for: .seconds(delay))
@@ -316,6 +357,7 @@ public final class AppCoordinator {
         try? await controlSession.applyConfiguration(configuration)
         try? await controlSession.setMode(configuration.operatingMode, manualDuty: configuration.manualDuty)
         lastAppliedConfiguration = configuration
+        startControlLoop()
     }
 
     private func startLifecycleNotifications() {
