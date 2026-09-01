@@ -67,6 +67,31 @@ final class ControlSessionTests: XCTestCase {
         XCTAssertEqual(telemetry.connectionState, .connected)
     }
 
+    func testControlAndStatusRefreshNeverOverlapDeviceTransactions() async throws {
+        let configuration = try Configuration(keepaliveInterval: 5, refreshInterval: 1)
+        let clock = ManualClock()
+        let source = FakeSensorProvider(temperature: 50)
+        let device = DelayedHostDevice(base: FakeHostDevice(clock: clock))
+        let session = ControlSession(
+            temperatureSource: source,
+            device: device,
+            configuration: configuration,
+            clock: clock
+        )
+        _ = await session.tick()
+
+        try clock.advance(by: 1)
+        async let controlTick = session.tick()
+        try await Task.sleep(for: .milliseconds(20))
+        async let statusRefresh = session.refreshStatus()
+        let (controlTelemetry, statusTelemetry) = await (controlTick, statusRefresh)
+        let maximumConcurrentOperations = await device.maximumConcurrentOperations
+
+        XCTAssertEqual(controlTelemetry.connectionState, .connected)
+        XCTAssertEqual(statusTelemetry.connectionState, .connected)
+        XCTAssertEqual(maximumConcurrentOperations, 1)
+    }
+
     func testManualZeroFiftyAndHundred() async throws {
         let (_, _, device, _, session) = makeSession()
         for duty in [0, 50, 100] {
@@ -300,5 +325,49 @@ final class ControlSessionTests: XCTestCase {
         let state = await session.currentControlState
         XCTAssertGreaterThanOrEqual(trafficAfter, traffic)
         XCTAssertEqual(state, .stopped)
+    }
+}
+
+private actor DelayedHostDevice: HostDevice {
+    private let base: FakeHostDevice
+    private var activeOperations = 0
+    private(set) var maximumConcurrentOperations = 0
+
+    init(base: FakeHostDevice) {
+        self.base = base
+    }
+
+    var isConnected: Bool { get async { await base.isConnected } }
+
+    func connect() async throws {
+        try await base.connect()
+    }
+
+    func disconnect() async {
+        await base.disconnect()
+    }
+
+    func close() async {
+        await base.close()
+    }
+
+    func getStatus() async throws -> DeviceStatus {
+        activeOperations += 1
+        maximumConcurrentOperations = max(maximumConcurrentOperations, activeOperations)
+        defer { activeOperations -= 1 }
+        try? await Task.sleep(for: .milliseconds(100))
+        return try await base.getStatus()
+    }
+
+    func setHostControlled() async throws {
+        try await base.setHostControlled()
+    }
+
+    func setMax() async throws {
+        try await base.setMax()
+    }
+
+    func setDuty(_ percent: Int) async throws {
+        try await base.setDuty(percent)
     }
 }

@@ -50,6 +50,10 @@ public actor ControlSession {
     private var powerFaultLatched = false
     private var reconnectAttempts = 0
     private var nextReconnectTime: TimeInterval = 0
+    /// `tick()` and `refreshStatus()` are intentionally driven by separate UI
+    /// loops. Actors are re-entrant at `await` points, so they need an explicit
+    /// gate to keep their HID transactions from overlapping.
+    private let deviceOperationGate = DeviceOperationGate()
 
     public init(
         temperatureSource: any TemperatureSource,
@@ -74,6 +78,13 @@ public actor ControlSession {
 
     @discardableResult
     public func tick() async -> TelemetrySnapshot {
+        await deviceOperationGate.acquire()
+        let snapshot = await tickExclusively()
+        await deviceOperationGate.release()
+        return snapshot
+    }
+
+    private func tickExclusively() async -> TelemetrySnapshot {
         let now = clock.now
         if stopped {
             controlState = .stopped
@@ -204,6 +215,13 @@ public actor ControlSession {
     /// independent from a slow system-sensor read.
     @discardableResult
     public func refreshStatus() async -> TelemetrySnapshot {
+        await deviceOperationGate.acquire()
+        let snapshot = await refreshStatusExclusively()
+        await deviceOperationGate.release()
+        return snapshot
+    }
+
+    private func refreshStatusExclusively() async -> TelemetrySnapshot {
         let now = clock.now
         guard !stopped, !sleeping,
               connectionState == .connected,
@@ -479,5 +497,31 @@ public actor ControlSession {
             reason: lastDecision?.reason ?? "",
             physicalFanOffSupported: configuration.physicalFanOffSupported
         )
+    }
+}
+
+/// A small FIFO async mutex used to protect a complete device operation across
+/// actor re-entrancy. It avoids `transactionInFlight` errors when the control
+/// and status-refresh loops wake at the same time.
+private actor DeviceOperationGate {
+    private var held = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        guard held else {
+            held = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            held = false
+        } else {
+            waiters.removeFirst().resume()
+        }
     }
 }
