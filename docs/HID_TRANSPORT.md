@@ -7,7 +7,7 @@
 - Vendor ID：`0x1A86`
 - Product ID：`0xFE01`
 
-DFU Product ID `0x8035` 不在匹配条件内。因此本客户端不会因为发现逻辑而连接 DFU 设备，更不会执行 DFU、刷写或固件更新。多个匹配设备按 location ID、序列号、registry ID 的稳定顺序选择；诊断快照会提供完整匹配列表与已选设备。
+发现条件只匹配正常运行的 CheeseCool 设备（VID `0x1A86` / PID `0xFE01`）。软件触发 DFU 不受支持；本客户端不执行引导加载程序或固件恢复。多个匹配设备按 location ID、序列号、registry ID 的稳定顺序选择；诊断快照会提供完整匹配列表与已选设备。
 
 ## 报告语义
 

@@ -2,12 +2,17 @@ import Foundation
 
 public enum ProtocolV1Command: UInt8, CaseIterable, Sendable {
     case ping = 0x01
-    case enterDFULegacy = 0x08
     case getStatus = 0x09
     case setMode = 0x0A
     case setDuty = 0x0B
     case setCurve = 0x0C
-    case enterDFU = 0x0D
+}
+
+/// Protocol IDs intentionally excluded from the client command surface.
+/// They are permanently reserved and must never be constructed or dispatched.
+public enum ProtocolV1ReservedCommand {
+    public static let command08: UInt8 = 0x08
+    public static let command0D: UInt8 = 0x0D
 }
 
 public enum ProtocolV1Mode: UInt8, Sendable {

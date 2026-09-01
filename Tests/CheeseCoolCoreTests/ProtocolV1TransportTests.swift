@@ -75,13 +75,28 @@ final class ProtocolV1TransportTests: XCTestCase {
         XCTAssertEqual(third, 0)
     }
 
-    func testDeviceSelectionIsStableAndExcludesDFUIdentity() {
+    func testDeviceSelectionIsStableAndOnlyUsesApplicationIdentity() {
         let later = HIDDeviceIdentity(locationID: 2, registryID: 2)
         let earlier = HIDDeviceIdentity(locationID: 1, registryID: 3)
         let discovery = StaticHIDDeviceDiscovery(devices: [later, earlier])
         XCTAssertEqual(discovery.selectedDevice(), earlier)
-        let dfu = HIDDeviceIdentity(productID: HIDDeviceIdentity.goldenDFUProductID, registryID: 4)
-        XCTAssertNotEqual(dfu.productID, HIDDeviceIdentity.cheeseCoolProductID)
+        XCTAssertEqual(HIDDeviceIdentity.cheeseCoolVendorID, 0x1A86)
+        XCTAssertEqual(HIDDeviceIdentity.cheeseCoolProductID, 0xFE01)
+    }
+
+    func testReservedCommandsCannotBeConstructedOrDispatched() throws {
+        for reserved in [ProtocolV1ReservedCommand.command08, ProtocolV1ReservedCommand.command0D] {
+            XCTAssertNil(ProtocolV1Command(rawValue: reserved))
+            var frame = [UInt8](repeating: 0, count: ProtocolV1Codec.frameLength)
+            frame[0] = ProtocolV1Codec.version
+            frame[1] = reserved
+            frame[63] = ProtocolV1Codec.checksum(frame[0...62])
+            XCTAssertThrowsError(try ProtocolV1Codec.decodeRequest(frame))
+        }
+        XCTAssertEqual(
+            Set(ProtocolV1Command.allCases.map(\.rawValue)),
+            Set([0x01, 0x09, 0x0A, 0x0B, 0x0C])
+        )
     }
 
     func testHIDHostDeviceUsesPingStatusAndExactCommands() async throws {

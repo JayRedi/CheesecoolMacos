@@ -7,7 +7,7 @@ CheeseCool 是一款面向 Apple Silicon Mac 的原生菜单栏客户端。当�
 - 仅支持 Apple Silicon（`arm64`）；应用最低部署目标为 macOS 13.0。
 - 使用 Swift 6、AppKit 与 SwiftUI；不包含 Python 运行时、守护进程、特权辅助工具、LaunchAgent 或 Shell 环境修改。
 - `0%` 占空比表示 `MINIMUM_SPEED`（模拟设备中约为 345 RPM），绝不表示物理停转。
-- 运行时仅被动匹配 CheeseCool 正常运行设备（VID `0x1A86` / PID `0xFE01`）；DFU PID `0x8035` 不会被发现、打开或写入。
+- 运行时仅被动匹配 CheeseCool 正常运行设备（VID `0x1A86` / PID `0xFE01`）。软件触发 DFU 不受支持；Protocol V1 的 `0x08` 与 `0x0D` 永久保留，客户端无法构造或派发它们。引导加载程序和固件恢复不由 macOS 客户端发起。
 - Release 默认使用原生 HID 路径。模拟设备只可通过 `--simulation` 或既有的阶段演练参数启用，界面会明确标为“模拟设备”。本阶段没有对实际硬件执行验证、刷写、DFU、OpenOCD 或 WCH-LinkE 操作。
 
 ## 产品

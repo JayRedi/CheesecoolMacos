@@ -32,7 +32,6 @@ public enum HIDTransportError: Error, Equatable, LocalizedError, Sendable {
 public struct HIDDeviceIdentity: Equatable, Comparable, Sendable {
     public static let cheeseCoolVendorID = 0x1A86
     public static let cheeseCoolProductID = 0xFE01
-    public static let goldenDFUProductID = 0x8035
 
     public let vendorID: Int
     public let productID: Int
@@ -83,7 +82,7 @@ public protocol HIDTransport: Sendable {
 }
 
 /// Native passive discovery for only the CheeseCool application VID/PID (1A86:FE01).
-/// The golden DFU PID (1A86:8035) is deliberately not matched and never opened here.
+/// Bootloader and firmware recovery are not initiated by this client.
 public final class HIDDeviceDiscovery: HIDDeviceDiscovering, @unchecked Sendable {
     private let lock = NSLock()
     private let manager: IOHIDManager

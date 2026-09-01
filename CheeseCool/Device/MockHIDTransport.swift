@@ -95,7 +95,7 @@ private struct MockProtocolV1Device: Sendable {
             actualDuty = request.payload[0]
             failsafe = false
             return try ProtocolV1Codec.encodeResponse(command: .setDuty, sequence: request.sequence)
-        case .enterDFULegacy, .setCurve, .enterDFU:
+        case .setCurve:
             return try ProtocolV1Codec.encodeResponse(command: request.command, sequence: request.sequence, status: 1)
         }
     }
