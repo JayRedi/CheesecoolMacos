@@ -23,7 +23,7 @@ CheeseCool 是面向 Apple Silicon Mac 的原生菜单栏风扇控制客户端�
 
 ## 安装
 
-本仓库可生成本地、未签名的开发 DMG；它不是 Apple 签名或公证后的正式发行包。构建完成后打开 `dist/CheeseCool.dmg`，将 `CheeseCool.app` 拖入“应用程序”即可。
+本仓库可生成本地、ad-hoc 签名但未公证的开发 DMG；它不是 Developer ID 签名或 Apple 公证后的正式发行包。构建完成后打开 `dist/CheeseCool.dmg`，将 `CheeseCool.app` 拖入“应用程序”即可。首次打开若遇 Gatekeeper 提示，请在“系统设置 → 隐私与安全性”中选择“仍要打开”，不要用删除 quarantine 的方式绕过检查。
 
 详细步骤见[安装说明](docs/INSTALLATION.md)与[构建说明](docs/BUILD.md)。
 
@@ -62,6 +62,7 @@ macOS 客户端已完成真实 FE01 HID 通信、控制模式、MCU failsafe、�
 - [HID 传输](docs/HID_TRANSPORT.md)
 - [Protocol V1 映射](docs/PROTOCOL_V1_SWIFT.md)
 - [开发期硬件验证工具](docs/HARDWARE_VALIDATION_HARNESS.md)
+- [开源分发与签名](docs/DISTRIBUTION.md)
 - [配置](docs/CONFIGURATION.md)
 - [安装](docs/INSTALLATION.md)
 - [完整卸载](docs/UNINSTALLATION.md)

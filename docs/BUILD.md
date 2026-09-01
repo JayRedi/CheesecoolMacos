@@ -51,7 +51,7 @@ xcodebuild -project CheeseCool.xcodeproj -scheme CheeseCool \
 scripts/package-local-dmg.sh
 ```
 
-脚本会构建 Release 主应用和卸载器，将卸载器嵌入主应用后生成 `dist/CheeseCool.dmg` 与 `dist/CheeseCool.dmg.sha256`。这是本地、未签名、未公证的开发包，不应描述为正式 Apple 发布包。
+脚本会构建 Release 主应用和卸载器，将卸载器嵌入主应用，执行最终 ad-hoc 签名和多阶段 strict 校验后生成 `dist/CheeseCool.dmg` 与 `dist/CheeseCool.dmg.sha256`。这是本地、未公证的开发包，不应描述为正式 Apple 发布包。签名策略见[开源分发说明](DISTRIBUTION.md)。
 
 ## HardwareValidationHarness
 
