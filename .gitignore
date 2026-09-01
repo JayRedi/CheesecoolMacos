@@ -8,6 +8,7 @@ xcuserdata/
 build/
 .build/
 DerivedData/
+.swiftpm/
 *.dSYM
 *.dSYM.zip
 *.xcarchive
@@ -18,6 +19,7 @@ DerivedData/
 # Signing and local credentials
 *.cer
 *.p12
+*.p8
 *.mobileprovision
 *.provisionprofile
 Signing.local.xcconfig
@@ -28,5 +30,14 @@ dist/
 
 # Temporary test/simulation data
 .test-data/
+*.xcresult
+*.xcresultbundle
+*.log
+HardwareValidationHarness
 *.tmp
 .DS_Store
+
+# Local environment files
+.env
+.env.*
+!.env.example
